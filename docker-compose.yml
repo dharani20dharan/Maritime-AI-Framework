@@ -1,0 +1,24 @@
+# Maritime Intelligence Knowledge Graph - Infrastructure Setup
+# This file defines the Neo4j database container configuration.
+# It uses the official Neo4j 5.x image and configures ports and volumes.
+version: '3.8'
+
+services:
+  neo4j:
+    image: neo4j:5.12.0
+    container_name: maritime_neo4j
+    ports:
+      - "7474:7474" # HTTP Browser
+      - "7687:7687" # Bolt protocol
+    environment:
+      - NEO4J_AUTH=neo4j/maritime123 # Username/Password
+      # Allow APOC plugins if needed in future
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
+    volumes:
+      - ./neo4j/data:/data
+      - ./neo4j/logs:/logs
+      - ./neo4j/import:/var/lib/neo4j/import
+      - ./neo4j/plugins:/plugins
+    restart: always

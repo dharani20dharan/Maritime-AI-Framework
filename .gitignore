@@ -1,0 +1,16 @@
+# Environments
+venv/
+env/
+.env
+__pycache__/
+*.pyc
+
+# IDEs and Editors
+.vscode/
+.idea/
+
+# Database Data
+neo4j/data/
+neo4j/logs/
+neo4j/import/
+neo4j/plugins/
