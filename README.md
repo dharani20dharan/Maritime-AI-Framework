@@ -17,10 +17,15 @@ The schema employs Neo4j's native temporal and spatial data types to enable high
 
 ## Project Structure
 
-- `docker-compose.yml`: Spins up a local instance of the Neo4j Community Edition database.
-- `requirements.txt`: Python dependencies (primarily the official `neo4j` driver).
-- `init_db.py`: Connects to Neo4j to enforce data integrity by creating necessary unique constraints and indexes.
-- `load_sample_data.py`: A dummy data loader that populates the graph with a realistic scenario, including a sanctioned Iranian shipping line, a completed voyage, and an AIS gap event.
+This repository is structured around the Maritime AI Framework (MAF) to separate data pipelines (Engineer A) from reasoning and agents (Engineer B).
+
+- `infra/`: Infrastructure configs (e.g., `docker-compose.yml` for Neo4j).
+- `ingestion/`: Kafka and NiFi pipelines for AIS and satellite data (Engineer A).
+- `database/`: Neo4j schema definitions, ETL jobs, and data loaders (`init_db.py`, `load_sample_data.py`) (Engineer A).
+- `agents/`: LangGraph orchestration, Critic, and Verifier agents (Engineer B).
+- `api/`: FastAPI and GraphQL output layer (Engineer B).
+- `tools/`: Registry scrapers and MMSI cross-reference tools (Engineer B).
+- `dashboard/`: Kepler.gl visualization and UI (Engineer B).
 
 ## Getting Started
 
@@ -31,7 +36,9 @@ The schema employs Neo4j's native temporal and spatial data types to enable high
 ### 1. Start the Database
 Run the following command to start the Neo4j container in the background:
 ```bash
+cd infra
 docker compose up -d
+cd ..
 ```
 *Wait a few seconds for Neo4j to fully initialize before proceeding to the next steps.*
 
@@ -50,12 +57,12 @@ pip install -r requirements.txt
 ### 3. Initialize Schema & Load Data
 First, run the initialization script to create the constraints and indexes:
 ```bash
-python init_db.py
+python database/init_db.py
 ```
 
 Then, load the dummy dataset into the database:
 ```bash
-python load_sample_data.py
+python database/load_sample_data.py
 ```
 
 ### 4. Explore the Graph
