@@ -47,3 +47,30 @@ detected_anomalies = engine.evaluate(vessel_state)
 # Output is a JSON-compatible list of triggered rules
 print(detected_anomalies)
 ```
+
+## Sanction Evasion Risk Scorer (`sanction_scorer.py`)
+
+The `sanction_scorer.py` script bridges the gap between your autonomous agents and the Neo4j Knowledge Graph. It executes complex, multi-hop Cypher queries to detect sanction evasion patterns (like shell companies and flag hopping) and calculates an aggregate **Evasion Risk Score (0-100)**.
+
+### How it works
+The `SanctionScorer` class connects to the Neo4j database using a read-only Bolt connection (adhering to Contract B1). When you pass a vessel's IMO number, it queries the graph for:
+1.  **Ownership Risk**: Traverses `OWNED_BY`/`MANAGED_BY` and `SUBSIDIARY_OF` relationships to see if the vessel is linked to a sanctioned entity through front companies.
+2.  **Behavioral Risk**: Correlates the vessel's dark activity (`AIS_GAP`, `LOITERING`) with other vessels to detect Ship-to-Ship (STS) transfers.
+3.  **Identity Risk**: Counts historical `REGISTERED_UNDER` relationships to penalize flag hopping.
+
+The final output is capped at 100 and returns the specific evidence flags.
+
+### Example Integration
+```python
+from tools.sanction_scorer import SanctionScorer
+
+scorer = SanctionScorer()
+
+# Pass the IMO of the vessel you want to investigate
+risk_score, flags = scorer.calculate_risk("9988776")
+
+print(f"Risk Score: {risk_score}")
+print(f"Triggered Flags: {flags}")
+
+scorer.close()
+```
