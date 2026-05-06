@@ -74,3 +74,30 @@ print(f"Triggered Flags: {flags}")
 
 scorer.close()
 ```
+
+## Registry Scrapers (`scrapers.py`)
+
+The `scrapers.py` module contains Web Scrapers designed to pull external registry data (MMSI, Flag, Ownership) from public maritime databases like **MarineTraffic** and **Equasis**.
+
+### Anti-Bot Measures & Fallbacks
+Because these websites employ aggressive anti-bot protections (Cloudflare, CAPTCHAs, and authenticated sessions), standard `requests` calls will often be blocked (`403 Forbidden`). 
+
+To ensure our AI reasoning pipelines don't crash, these scrapers are built with a robust scaffolding: they *attempt* the live scrape, but if blocked, they gracefully catch the error and return **formatted JSON mock data**.
+
+### Example Integration
+```python
+from tools.scrapers import MarineTrafficScraper, EquasisScraper
+
+# 1. MarineTraffic
+mt = MarineTrafficScraper(delay_seconds=2.0)
+mt_data = mt.scrape_vessel("9988776")
+print(mt_data)
+
+# 2. Equasis
+eq = EquasisScraper()
+eq_data = eq.scrape_vessel("9123456")
+print(eq_data)
+```
+
+> [!TIP]
+> **Upgrading for Production:** To bypass the mock fallback in a real production environment, Engineer A should integrate a residential proxy network (e.g., BrightData) or inject authenticated session cookies into the `self.session` object inside the scraper classes.
