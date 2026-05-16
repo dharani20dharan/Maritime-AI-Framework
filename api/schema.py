@@ -15,9 +15,9 @@ from tools.sanction_scorer import SanctionScorer
 class Event:
     event_id: str
     event_type: str
-    location: str
-    start_time: str
-    end_time: str
+    location: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
 
 @strawberry.type
 class Vessel:

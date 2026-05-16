@@ -4,6 +4,7 @@ import logging
 import requests
 from bs4 import BeautifulSoup
 from typing import Dict, Any, Optional
+import concurrent.futures
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s")
@@ -150,14 +151,79 @@ class EquasisScraper(BaseScraper):
         }
 
 
+class RegistryCrossReferencer:
+    """
+    Orchestrates parallel data retrieval across multiple maritime registries.
+    
+    Utilizes a ThreadPoolExecutor to concurrently scrape Equasis and MarineTraffic,
+    merging the results into a unified context dictionary for the LangGraph agents.
+    This significantly reduces the latency of the Data Retrieval node.
+    """
+    def __init__(self):
+        self.scrapers = {
+            "marine_traffic": MarineTrafficScraper(),
+            "equasis": EquasisScraper()
+        }
+
+    def _run_scraper(self, name: str, scraper: BaseScraper, imo: str) -> tuple:
+        try:
+            return name, scraper.scrape_vessel(imo)
+        except Exception as e:
+            logging.error(f"Scraper {name} failed for IMO {imo}: {e}")
+            return name, {"error": str(e), "source": name}
+
+    def scrape_parallel(self, imo_number: str) -> Dict[str, Any]:
+        results = {}
+        logging.info(f"Starting parallel scrape for IMO: {imo_number}")
+        
+        # Run scrapers concurrently using a thread pool
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(self.scrapers)) as executor:
+            future_to_scraper = {
+                executor.submit(self._run_scraper, name, scraper, imo_number): name
+                for name, scraper in self.scrapers.items()
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_scraper):
+                name, data = future.result()
+                results[name] = data
+                
+        # Merge logic
+        merged = {
+            "imo": imo_number,
+            "scraped_at": time.time(),
+            "sources": [],
+            "vessel_name": "UNKNOWN",
+            "mmsi": "UNKNOWN",
+            "flag": "UNKNOWN",
+            "registered_owner": "UNKNOWN",
+            "company_imo": "UNKNOWN",
+            "psc_inspections": "UNKNOWN",
+            "raw_results": results
+        }
+        
+        # Extract from MarineTraffic
+        if "marine_traffic" in results and "error" not in results["marine_traffic"]:
+            mt_data = results["marine_traffic"].get("data", results["marine_traffic"])
+            merged["vessel_name"] = mt_data.get("name", merged["vessel_name"])
+            merged["mmsi"] = mt_data.get("mmsi", merged["mmsi"])
+            merged["flag"] = mt_data.get("flag", merged["flag"])
+            merged["sources"].append(results["marine_traffic"].get("source", "MarineTraffic"))
+            
+        # Extract from Equasis
+        if "equasis" in results and "error" not in results["equasis"]:
+            eq_data = results["equasis"].get("data", results["equasis"])
+            if isinstance(eq_data, dict):
+                merged["registered_owner"] = eq_data.get("registered_owner", merged["registered_owner"])
+                merged["company_imo"] = eq_data.get("company_imo", merged["company_imo"])
+                merged["psc_inspections"] = eq_data.get("psc_inspections", merged["psc_inspections"])
+            merged["sources"].append(results["equasis"].get("source", "Equasis"))
+
+        return merged
+
+
 if __name__ == "__main__":
     # Test execution
-    print("\n--- Testing MarineTraffic Scraper ---")
-    mt_scraper = MarineTrafficScraper()
-    mt_result = mt_scraper.scrape_vessel("9988776")
-    print(json.dumps(mt_result, indent=2))
-    
-    print("\n--- Testing Equasis Scraper ---")
-    eq_scraper = EquasisScraper()
-    eq_result = eq_scraper.scrape_vessel("9123456")
-    print(json.dumps(eq_result, indent=2))
+    print("\n--- Testing Registry Cross Referencer ---")
+    cross_referencer = RegistryCrossReferencer()
+    result = cross_referencer.scrape_parallel("9988776")
+    print(json.dumps(result, indent=2))

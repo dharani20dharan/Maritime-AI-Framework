@@ -6,6 +6,10 @@ import sys
 import os
 import json
 from pprint import pprint
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Ensure we can import from the tools directory at the project root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -13,27 +17,56 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from langgraph.graph import StateGraph, END
 from agents.state import AgentState
 from tools.sanction_scorer import SanctionScorer
+from tools.scrapers import RegistryCrossReferencer
+from langchain_groq import ChatGroq
+from pydantic import BaseModel, Field
+"""
+Maritime AI Framework - Agentic Orchestrator (LangGraph)
+
+This module defines the core multi-agent reasoning layer of the MAF system.
+It utilizes LangGraph to manage state transitions between Data Retrieval,
+Deterministic Rule Evaluation, and LLM-based Report Synthesis.
+
+Routing logic guarantees that the LLM is only invoked for high-risk vessels,
+optimizing performance and API costs.
+"""
+
+from typing import List
+
+# ---------------------------------------------------------
+# Output Schema
+# ---------------------------------------------------------
+class SAROutput(BaseModel):
+    hypothesis: str = Field(description="A brief hypothesis on what the vessel might be doing based on the data.")
+    evidence_for: List[str] = Field(description="List of evidence points that support the hypothesis.")
+    evidence_against: List[str] = Field(description="List of evidence points that contradict the hypothesis or suggest normal behavior.")
+    verdict: str = Field(description="Final classification: CONFIRMED, DISMISSED, or ESCALATE")
+    confidence: float = Field(description="Confidence score between 0.0 and 1.0")
 
 # ---------------------------------------------------------
 # Node 1: Data Retrieval Agent
 # ---------------------------------------------------------
 def retrieve_data_node(state: AgentState):
-    """Mocks retrieving raw AIS and registry data from Kafka/NiFi."""
-    print(f"\n[Agent 1: Data Retriever] Fetching raw data for IMO: {state['vessel_imo']}")
+    """Retrieves raw AIS and registry data."""
+    print(f"\n[Agent 1: Data Retriever] Fetching raw data and registry info for IMO: {state['vessel_imo']}")
     
-    # In production, this calls the ingestion layer or Neo4j raw nodes
+    # Mock AIS Data (In production this comes from Kafka/Neo4j)
     mock_raw_data = {
-        "vessel_name": "UNKNOWN",
         "last_known_port": "UNKNOWN"
     }
     if state["vessel_imo"] == "9988776":
-        mock_raw_data["vessel_name"] = "SEA SHADOW"
         mock_raw_data["last_known_port"] = "IRBND (Bandar Abbas)"
     elif state["vessel_imo"] == "9123456":
-        mock_raw_data["vessel_name"] = "OCEAN VOYAGER"
         mock_raw_data["last_known_port"] = "USNYC (New York)"
 
-    return {"raw_vessel_data": mock_raw_data}
+    # Parallel Registry Scraping
+    referencer = RegistryCrossReferencer()
+    registry_data = referencer.scrape_parallel(state["vessel_imo"])
+
+    return {
+        "raw_vessel_data": mock_raw_data,
+        "registry_data": registry_data
+    }
 
 # ---------------------------------------------------------
 # Node 2: Rule Evaluation Agent (The Critic)
@@ -53,6 +86,16 @@ def evaluate_rules_node(state: AgentState):
             "anomaly_flags": flags,
             "is_suspicious": is_suspicious
         }
+    except Exception as e:
+        print(f"   -> [Warning] Neo4j connection failed: {e}. Using mock scores for testing.")
+        # Provide a mock score to test the LLM node when DB is down
+        mock_score = 85 if state["vessel_imo"] == "9988776" else 10
+        mock_flags = ["Mocked Flag: Flag Hopping Risk"] if mock_score > 50 else []
+        return {
+            "risk_score": mock_score,
+            "anomaly_flags": mock_flags,
+            "is_suspicious": mock_score >= 50
+        }
     finally:
         scorer.close()
 
@@ -61,34 +104,44 @@ def evaluate_rules_node(state: AgentState):
 # ---------------------------------------------------------
 def generate_report_node(state: AgentState):
     """Uses an LLM to synthesize a Suspicious Activity Report (SAR)."""
-    print(f"[Agent 3: Output Generator] Synthesizing Suspicious Activity Report (SAR)...")
+    print(f"[Agent 3: Output Generator] Synthesizing Suspicious Activity Report (SAR) via Gemini...")
     
-    # We implement a mock LLM generator to allow this to run without an API key.
-    # In production, use `ChatOpenAI` from langchain-openai.
-    
-    name = state["raw_vessel_data"]["vessel_name"]
+    registry = state.get("registry_data", {})
+    vessel_name = registry.get("vessel_name", "UNKNOWN")
     flags_formatted = "\n  - ".join(state["anomaly_flags"]) if state["anomaly_flags"] else "None"
     
-    report = f"""
-==================================================
-SUSPICIOUS ACTIVITY REPORT (SAR)
-==================================================
-TARGET VESSEL : {name} (IMO: {state['vessel_imo']})
-RISK SCORE    : {state['risk_score']}/100
-CLASSIFICATION: {'HIGH RISK' if state['is_suspicious'] else 'LOW RISK'}
-
-EVIDENCE EXTRACTED FROM KNOWLEDGE GRAPH:
-  - {flags_formatted}
-
-RECOMMENDATION:
-"""
-    if state["is_suspicious"]:
-        report += "Immediate escalation to compliance team. Flag vessel in internal registry and halt commercial operations pending review."
-    else:
-        report += "No action required. Vessel cleared."
+    system_prompt = f"""
+    You are an expert maritime intelligence analyst. Your task is to review the following vessel data and generate a Suspicious Activity Report (SAR).
+    
+    TARGET VESSEL: {vessel_name} (IMO: {state['vessel_imo']})
+    LAST KNOWN PORT: {state['raw_vessel_data'].get('last_known_port')}
+    REGISTRY OWNER: {registry.get('registered_owner', 'Unknown')}
+    REGISTRY FLAG: {registry.get('flag', 'Unknown')}
+    
+    RISK SCORE: {state['risk_score']}/100
+    
+    EVIDENCE FLAGS EXTRACTED FROM KNOWLEDGE GRAPH:
+      - {flags_formatted}
+      
+    Evaluate the evidence carefully and output your hypothesis according to the required schema.
+    """
+    
+    try:
+        # We use Groq's super-fast Llama 3 model for structured reasoning
+        llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.1)
+        structured_llm = llm.with_structured_output(SAROutput)
         
-    report += "\n=================================================="
-    return {"final_report": report}
+        result = structured_llm.invoke(system_prompt)
+        
+        # Convert pydantic model to dict for state storage
+        report_dict = result.dict()
+        print(f"   -> Verdict: {report_dict['verdict']} (Confidence: {report_dict['confidence']})")
+        
+        return {"final_report": report_dict}
+        
+    except Exception as e:
+        print(f"   -> Error calling Gemini: {e}")
+        return {"final_report": {"error": str(e), "hypothesis": "Failed to generate report."}}
 
 # ---------------------------------------------------------
 # Conditional Routing Edge
@@ -144,4 +197,8 @@ if __name__ == "__main__":
     final_state = app.invoke(initial_state_2)
     
     print("\n[Final Output Received from Graph]")
-    print(final_state.get("final_report", "No report generated."))
+    report = final_state.get("final_report")
+    if report:
+        pprint(report)
+    else:
+        print("No report generated.")

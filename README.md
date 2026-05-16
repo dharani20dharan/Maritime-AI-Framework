@@ -1,92 +1,63 @@
-# Maritime Intelligence Knowledge Graph
+# Maritime AI Framework (MAF)
 
-This project provides a robust, production-ready Neo4j database schema and initialization setup for modeling maritime intelligence data.
+A scalable, multi-agent AI system designed to automatically detect and report suspicious maritime activity, flag hopping, and sanction violations using a Neo4j Knowledge Graph and LangGraph orchestration.
 
-## Overview
+## Architecture
 
-The database models the complex relationships within the maritime domain, capturing:
-- **Vessels**: Identification (IMO, MMSI) and technical details.
-- **Companies**: Corporate ownership, commercial management, and registered addresses.
-- **Ports**: Global port infrastructure with geospatial coordinates.
-- **Voyages**: Vessel journeys between ports.
-- **Events**: Tracked activities or anomalies, such as Port Calls, AIS Gaps, and Ship-to-Ship (STS) transfers.
-- **Sanctions**: Regulatory designations (e.g., OFAC, EU) applied to entities or specific vessels.
-- **Flags**: Jurisdictions of ship registration.
+The system follows a strict 3-tier agentic workflow:
 
-The schema employs Neo4j's native temporal and spatial data types to enable high-performance queries for dark fleet detection, sanction evasion (e.g., multi-hop corporate structures), and historical event tracking.
-
-## Project Structure
-
-This repository is structured around the Maritime AI Framework (MAF) to separate data pipelines (Engineer A) from reasoning and agents (Engineer B).
-
-- `infra/`: Infrastructure configs (e.g., `docker-compose.yml` for Neo4j).
-- `ingestion/`: Kafka and NiFi pipelines for AIS and satellite data (Engineer A).
-- `database/`: Neo4j schema definitions, ETL jobs, and data loaders (`init_db.py`, `load_sample_data.py`) (Engineer A).
-- `agents/`: LangGraph orchestration, Critic, and Verifier agents (Engineer B).
-- `api/`: FastAPI and GraphQL output layer (Engineer B).
-- `tools/`: Registry scrapers and MMSI cross-reference tools (Engineer B).
-- `dashboard/`: Kepler.gl visualization and UI (Engineer B).
+1. **Agent 1 (Data Retriever):** Fetches real-time vessel context via parallel scraping of maritime registries (MarineTraffic, Equasis).
+2. **Agent 2 (Rule Evaluator):** Executes deterministic, graph-native anomaly queries (PROWL framework) against the Neo4j database to calculate a 0-100 Risk Score.
+3. **Agent 3 (Output Generator):** Conditionally triggered for high-risk vessels (`score >= 50`). Uses Groq's Llama-3 model to synthesize a structured JSON Suspicious Activity Report (SAR) explaining the hypothesis and evidence.
 
 ## Getting Started
 
 ### Prerequisites
-- [Docker](https://www.docker.com/) and Docker Compose
-- Python 3.8+
+- Python 3.10+
+- Docker & Docker Compose (for Neo4j infrastructure)
+- A free API key from [Groq](https://console.groq.com/keys)
 
-### 1. Start the Database
-Run the following command to start the Neo4j container in the background:
-```bash
-cd infra
-docker compose up -d
-cd ..
-```
-*Wait a few seconds for Neo4j to fully initialize before proceeding to the next steps.*
+### Setup
 
-### 2. Set Up the Environment
-Create a virtual environment and install the required dependencies:
-```bash
-python -m venv venv
-# On Windows:
-.\venv\Scripts\activate
-# On macOS/Linux:
-# source venv/bin/activate
-
-pip install -r requirements.txt
-```
-
-### 3. Initialize Schema & Load Data
-First, run the initialization script to create the constraints and indexes:
-```bash
-python database/init_db.py
-```
-
-Then, load the dummy dataset into the database:
-```bash
-python database/load_sample_data.py
-```
-
-### 4. Explore the Graph
-1. Open your web browser and navigate to the Neo4j Browser: **http://localhost:7474/**
-2. Log in using the default credentials configured in `docker-compose.yml`:
-   - **Username**: `neo4j`
-   - **Password**: `maritime123`
-3. Try running the following Cypher query to see everything:
-   ```cypher
-   MATCH (n) RETURN n
+1. **Install Dependencies:**
+   ```bash
+   pip install -r requirements.txt
    ```
 
-## Example Queries
+2. **Environment Variables:**
+   Create a `.env` file in the root directory and add your LLM API Key:
+   ```env
+   GROQ_API_KEY="your_groq_api_key_here"
+   ```
 
-### Find vessels connected to Sanctioned Entities
-```cypher
-MATCH (v:Vessel)-[:MANAGED_BY]->(mgr:Company)-[:SUBSIDIARY_OF*1..2]->(parent:Company)-[:SANCTIONED_BY]->(s:Sanction)
-RETURN v.name, parent.name, s.program
+3. **Database Infrastructure:**
+   Ensure Docker is running, then spin up the Neo4j container:
+   ```bash
+   cd infra
+   docker-compose up -d
+   ```
+
+### Running the System
+
+**1. Run the Multi-Agent Pipeline (CLI Demo)**
+Execute the main graph orchestrator to run the parallel scrapers and generate a report:
+```bash
+python agents/graph.py
 ```
 
-### Detect "Dark Activity" (AIS Gap followed by a Port Visit)
-```cypher
-MATCH (p:Port {unlocode: 'IRBND'})
-MATCH (v:Vessel)-[:INVOLVED_IN]->(e:Event {event_type: 'AIS_GAP'})
-MATCH (v)-[:UNDERTOOK]->(:Voyage)-[:ARRIVED_AT]->(p)
-RETURN v.name, e.description, p.name
+**2. Start the API Server**
+Start the FastAPI and GraphQL server to expose endpoints to the frontend dashboard:
+```bash
+python api/main.py
 ```
+Navigate to `http://localhost:8000/graphql` to interact with the API interface.
+
+## Current Progress (Week 1 & 2)
+- ✅ Neo4j Knowledge Graph schema and constraints defined.
+- ✅ Cypher anomaly rules (Flag Hopping, Spoofing, Sanction Proximity) implemented.
+- ✅ Parallel Registry Cross-Referencing built with `ThreadPoolExecutor`.
+- ✅ LangGraph Conditional Routing implemented to save token costs.
+- ✅ Groq LLM integrated with strict Pydantic JSON Output formatting.
+
+---
+*Built as part of the MAF 4-Week Sprint.*
