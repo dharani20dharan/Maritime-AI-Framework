@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAF — Maritime AI Framework · Live Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:        #080c10;
+    --bg2:       #0d1117;
+    --bg3:       #111820;
+    --border:    #1e2d3d;
+    --border2:   #243447;
+    --text:      #c9d1d9;
+    --muted:     #4a6070;
+    --accent:    #00d4ff;
+    --accent2:   #0095b3;
+    --green:     #00e676;
+    --green2:    #00b85a;
+    --amber:     #ffb300;
+    --red:       #ff4444;
+    --purple:    #b388ff;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid scan-line texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,255,0.012) 2px, rgba(0,212,255,0.012) 4px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── HEADER ────────────────────────────────────────────────────────────── */
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(8,12,16,0.95);
+    backdrop-filter: blur(8px);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .logo-mark {
+    width: 32px; height: 32px;
+    border: 1.5px solid var(--accent);
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-mark::before {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--accent);
+    transform: rotate(45deg);
+    opacity: 0.5;
+  }
+  .logo-mark::after {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+
+  .logo-text h1 {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.08em;
+  }
+  .logo-text p {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 1px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--green);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .live-dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0,230,118,0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(0,230,118,0); }
+  }
+
+  #clock {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  .refresh-btn {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    background: transparent;
+    border: 1px solid var(--accent2);
+    padding: 5px 12px;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .refresh-btn:hover { background: rgba(0,212,255,0.08); }
+  .refresh-btn:active { transform: scale(0.97); }
+
+  /* ── LAYOUT ────────────────────────────────────────────────────────────── */
+  main {
+    position: relative;
+    z-index: 1;
+    padding: 24px 28px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto auto auto;
+    gap: 16px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* ── CARD BASE ─────────────────────────────────────────────────────────── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+    opacity: 0.4;
+  }
+
+  .card-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-label::before {
+    content: '//';
+    color: var(--accent2);
+    opacity: 0.6;
+  }
+
+  /* ── SPAN HELPERS ──────────────────────────────────────────────────────── */
+  .span-2 { grid-column: span 2; }
+  .span-3 { grid-column: span 3; }
+
+  /* ── METRIC GRID ───────────────────────────────────────────────────────── */
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    grid-column: span 3;
+  }
+
+  .metric-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 16px;
+    position: relative;
+  }
+  .metric-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%; height: 2px;
+  }
+  .metric-card.blue::after  { background: var(--accent); }
+  .metric-card.green::after { background: var(--green); }
+  .metric-card.amber::after { background: var(--amber); }
+  .metric-card.purple::after{ background: var(--purple); }
+
+  .metric-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .metric-value {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .metric-value.blue   { color: var(--accent); }
+  .metric-value.green  { color: var(--green); }
+  .metric-value.amber  { color: var(--amber); }
+  .metric-value.purple { color: var(--purple); }
+  .metric-sub {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  /* ── SERVICE STATUS ────────────────────────────────────────────────────── */
+  .service-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .service-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    transition: border-color 0.2s;
+  }
+  .service-row:hover { border-color: var(--border2); }
+
+  .service-indicator {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .s-healthy  { background: var(--green); box-shadow: 0 0 6px var(--green2); }
+  .s-starting { background: var(--amber); animation: blink 1s ease-in-out infinite; }
+  .s-error    { background: var(--red); }
+  .s-unknown  { background: var(--muted); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .service-name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text);
+    flex: 1;
+  }
+  .service-status {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .s-healthy-text  { color: var(--green); }
+  .s-starting-text { color: var(--amber); }
+  .s-error-text    { color: var(--red); }
+  .s-unknown-text  { color: var(--muted); }
+
+  .service-port {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--muted);
+    margin-left: 8px;
+  }
+
+  /* ── KAFKA TOPICS ──────────────────────────────────────────────────────── */
+  .topic-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .topic-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent2);
+  }
+
+  .topic-name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    flex: 1;
+  }
+  .topic-count {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .topic-rate {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--green);
+    min-width: 60px;
+    text-align: right;
+  }
+
+  /* ── VESSEL TABLE ──────────────────────────────────────────────────────── */
+  .vessel-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .vessel-table thead tr {
+    border-bottom: 1px solid var(--border2);
+  }
+  .vessel-table th {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-align: left;
+    padding: 0 8px 10px;
+    font-weight: 500;
+  }
+  .vessel-table td {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text);
+    padding: 9px 8px;
+    border-bottom: 1px solid rgba(30,45,61,0.5);
+    vertical-align: middle;
+  }
+  .vessel-table tbody tr:hover td { background: rgba(0,212,255,0.03); }
+
+  .flag-chip {
+    display: inline-block;
+    padding: 1px 6px;
+    background: rgba(0,212,255,0.08);
+    border: 1px solid rgba(0,212,255,0.2);
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+  }
+  .speed-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .speed-track {
+    width: 48px; height: 3px;
+    background: var(--border2);
+    position: relative;
+  }
+  .speed-fill {
+    position: absolute;
+    top: 0; left: 0; height: 100%;
+    background: var(--accent);
+    transition: width 0.6s ease;
+  }
+
+  /* ── ANOMALY LOG ───────────────────────────────────────────────────────── */
+  .anomaly-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .anomaly-list::-webkit-scrollbar { width: 3px; }
+  .anomaly-list::-webkit-scrollbar-track { background: transparent; }
+  .anomaly-list::-webkit-scrollbar-thumb { background: var(--border2); }
+
+  .anomaly-row {
+    display: flex;
+    gap: 10px;
+    padding: 9px 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--amber);
+    align-items: flex-start;
+    animation: slideIn 0.3s ease;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-6px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .anomaly-row.beacon { border-left-color: var(--red); }
+  .anomaly-row.speed  { border-left-color: var(--amber); }
+
+  .anomaly-code {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--amber);
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+  .anomaly-row.beacon .anomaly-code { color: var(--red); }
+
+  .anomaly-detail { flex: 1; }
+  .anomaly-mmsi {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .anomaly-desc {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--muted);
+  }
+  .anomaly-time {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  /* ── PIPELINE FLOW ─────────────────────────────────────────────────────── */
+  .pipeline-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 10px 0;
+  }
+
+  .pipe-stage {
+    flex: 1;
+    text-align: center;
+    position: relative;
+  }
+  .pipe-box {
+    display: inline-block;
+    padding: 8px 12px;
+    border: 1px solid var(--border2);
+    background: var(--bg3);
+    position: relative;
+  }
+  .pipe-box.active { border-color: var(--accent2); }
+  .pipe-box.active::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border: 1px solid var(--accent);
+    opacity: 0.3;
+    animation: glow 2s ease-in-out infinite;
+  }
+  @keyframes glow { 0%,100%{opacity:0.2} 50%{opacity:0.5} }
+
+  .pipe-name {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 3px;
+  }
+  .pipe-tech {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    color: var(--muted);
+  }
+
+  .pipe-arrow {
+    width: 28px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent2), transparent);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .pipe-arrow::after {
+    content: '';
+    position: absolute;
+    right: 0; top: -3px;
+    border-left: 5px solid var(--accent2);
+    border-top: 3px solid transparent;
+    border-bottom: 3px solid transparent;
+  }
+  .pipe-arrow.flowing::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: 0;
+    width: 6px; height: 3px;
+    background: var(--accent);
+    border-radius: 2px;
+    animation: flow 1.2s linear infinite;
+    opacity: 0.8;
+  }
+  @keyframes flow {
+    from { left: 0; opacity: 0.8; }
+    to   { left: 100%; opacity: 0; }
+  }
+
+  /* ── GRAPH STATS ───────────────────────────────────────────────────────── */
+  .graph-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .graph-stat {
+    padding: 12px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+  }
+  .graph-stat-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .graph-stat-value {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--purple);
+  }
+
+  /* ── STATUS BAR ────────────────────────────────────────────────────────── */
+  .status-bar {
+    grid-column: span 3;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 10px 16px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .status-bar .sep { color: var(--border2); }
+  .status-item { display: flex; align-items: center; gap: 6px; }
+  .status-item .dot {
+    width: 5px; height: 5px; border-radius: 50%;
+  }
+
+  /* ── LOADING / ERROR STATES ────────────────────────────────────────────── */
+  .loading {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    animation: fadeFlicker 1.4s ease-in-out infinite;
+  }
+  @keyframes fadeFlicker { 0%,100%{opacity:0.4} 50%{opacity:1} }
+
+  .error-msg {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--red);
+    padding: 8px;
+    border: 1px solid rgba(255,68,68,0.2);
+    background: rgba(255,68,68,0.04);
+  }
+
+  /* ── SCROLLBAR ─────────────────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark"></div>
+    <div class="logo-text">
+      <h1>MAF · MARITIME AI FRAMEWORK</h1>
+      <p>Live Operations Dashboard · CAIR / DRDO</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div>Live</div>
+    <div id="clock">--:--:-- UTC</div>
+    <button class="refresh-btn" onclick="refreshAll()">↺ Refresh</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── TOP METRICS ──────────────────────────────────────────────────── -->
+  <div class="metric-grid">
+    <div class="metric-card blue">
+      <div class="metric-label">Vessels tracked</div>
+      <div class="metric-value blue" id="m-vessels">—</div>
+      <div class="metric-sub" id="m-vessels-sub">loading neo4j...</div>
+    </div>
+    <div class="metric-card green">
+      <div class="metric-label">AIS messages</div>
+      <div class="metric-value green" id="m-messages">—</div>
+      <div class="metric-sub" id="m-messages-sub">loading cassandra...</div>
+    </div>
+    <div class="metric-card amber">
+      <div class="metric-label">Anomalies detected</div>
+      <div class="metric-value amber" id="m-anomalies">—</div>
+      <div class="metric-sub" id="m-anomalies-sub">kafka · ais.anomalies</div>
+    </div>
+    <div class="metric-card purple">
+      <div class="metric-label">Sanctioned entities</div>
+      <div class="metric-value purple" id="m-sanctioned">—</div>
+      <div class="metric-sub" id="m-sanctioned-sub">loading neo4j...</div>
+    </div>
+  </div>
+
+  <!-- ── PIPELINE FLOW ────────────────────────────────────────────────── -->
+  <div class="card span-3">
+    <div class="card-label">End-to-end pipeline</div>
+    <div class="pipeline-flow" id="pipeline-flow">
+      <div class="pipe-stage">
+        <div class="pipe-box active" id="pipe-ais">
+          <span class="pipe-name">AIS Ingestor</span>
+          <span class="pipe-tech">AISStream.io</span>
+        </div>
+      </div>
+      <div class="pipe-arrow flowing" id="arr-1"></div>
+      <div class="pipe-stage">
+        <div class="pipe-box active" id="pipe-kafka">
+          <span class="pipe-name">Kafka</span>
+          <span class="pipe-tech">ais.validated</span>
+        </div>
+      </div>
+      <div class="pipe-arrow flowing" id="arr-2"></div>
+      <div class="pipe-stage">
+        <div class="pipe-box active" id="pipe-signal">
+          <span class="pipe-name">Signal Analyser</span>
+          <span class="pipe-tech">CV · Speed</span>
+        </div>
+      </div>
+      <div class="pipe-arrow flowing" id="arr-3"></div>
+      <div class="pipe-stage">
+        <div class="pipe-box active" id="pipe-neo4j">
+          <span class="pipe-name">Neo4j TKG</span>
+          <span class="pipe-tech">Vessel graph</span>
+        </div>
+      </div>
+      <div class="pipe-arrow flowing" id="arr-4"></div>
+      <div class="pipe-stage">
+        <div class="pipe-box active" id="pipe-cassandra">
+          <span class="pipe-name">Cassandra</span>
+          <span class="pipe-tech">90-day history</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SERVICE STATUS ───────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-label">Service status</div>
+    <div class="service-list" id="service-list">
+      <div class="loading">querying docker api...</div>
+    </div>
+  </div>
+
+  <!-- ── KAFKA TOPICS ─────────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-label">Kafka topics</div>
+    <div class="topic-list" id="topic-list">
+      <div class="loading">connecting to kafka...</div>
+    </div>
+  </div>
+
+  <!-- ── NEO4J GRAPH STATS ─────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-label">Neo4j knowledge graph</div>
+    <div class="graph-stats" id="graph-stats">
+      <div class="loading">querying neo4j...</div>
+    </div>
+  </div>
+
+  <!-- ── VESSEL TABLE ──────────────────────────────────────────────────── -->
+  <div class="card span-2">
+    <div class="card-label">Recent vessels · Neo4j <span style="color:var(--muted);font-size:9px;margin-left:8px">last 10 updated</span></div>
+    <div id="vessel-table-wrap">
+      <div class="loading">fetching vessel nodes...</div>
+    </div>
+  </div>
+
+  <!-- ── ANOMALY LOG ───────────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-label">Anomaly event log · ais.anomalies</div>
+    <div class="anomaly-list" id="anomaly-list">
+      <div class="loading">connecting to kafka...</div>
+    </div>
+  </div>
+
+  <!-- ── STATUS BAR ───────────────────────────────────────────────────── -->
+  <div class="status-bar">
+    <div class="status-item">
+      <div class="dot" style="background:var(--accent)"></div>
+      <span>Neo4j <span style="color:var(--text)">bolt://localhost:7687</span></span>
+    </div>
+    <span class="sep">|</span>
+    <div class="status-item">
+      <div class="dot" style="background:var(--green)"></div>
+      <span>Kafka <span style="color:var(--text)">localhost:29092</span></span>
+    </div>
+    <span class="sep">|</span>
+    <div class="status-item">
+      <div class="dot" style="background:var(--purple)"></div>
+      <span>Cassandra <span style="color:var(--text)">localhost:9042</span></span>
+    </div>
+    <span class="sep">|</span>
+    <span id="last-refresh" style="margin-left:auto">Never refreshed</span>
+  </div>
+
+</main>
+
+<!-- ── BACKEND PROXY SERVER ─────────────────────────────────────────────── -->
+<!--
+  This dashboard talks to a lightweight Python proxy (dashboard_server.py)
+  running on localhost:5000. The proxy queries Neo4j, Kafka, and Cassandra
+  and returns JSON to this page. CORS is handled by the proxy.
+  Start it with: python dashboard_server.py
+-->
+
+<script>
+const API = 'http://localhost:5000/api';
+
+// ── CLOCK ──────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toUTCString().split(' ')[4] + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── FETCH HELPER ───────────────────────────────────────────────────────────
+async function fetchAPI(path) {
+  try {
+    const r = await fetch(API + path, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+// ── SERVICE STATUS ─────────────────────────────────────────────────────────
+async function loadServices() {
+  const data = await fetchAPI('/services');
+  const el = document.getElementById('service-list');
+
+  if (data.error) {
+    el.innerHTML = `<div class="error-msg">Cannot reach proxy server.<br>Run: python dashboard_server.py</div>`;
+    return;
+  }
+
+  const services = [
+    { key: 'kafka',      name: 'maf-kafka',              port: '9092' },
+    { key: 'zookeeper',  name: 'maf-zookeeper',          port: '2181' },
+    { key: 'neo4j',      name: 'maf-neo4j',              port: '7474 / 7687' },
+    { key: 'cassandra',  name: 'maf-cassandra',          port: '9042' },
+    { key: 'ingestor',   name: 'maf-ais-ingestor',       port: '—' },
+    { key: 'signal',     name: 'maf-signal-analyser',    port: '—' },
+    { key: 'sanctions',  name: 'maf-sanctions-ingestor', port: '—' },
+    { key: 'history',    name: 'maf-ais-history-writer', port: '—' },
+    { key: 'etl',        name: 'maf-neo4j-etl',          port: '—' },
+  ];
+
+  el.innerHTML = services.map(s => {
+    const st = data[s.key] || 'unknown';
+    const cls = st === 'healthy' ? 's-healthy' : st === 'running' ? 's-healthy' :
+                st === 'starting' ? 's-starting' : st === 'error' ? 's-error' : 's-unknown';
+    const tcls = cls.replace('s-', 's-') + '-text';
+    const label = st === 'healthy' ? 'healthy' : st === 'running' ? 'running' :
+                  st === 'starting' ? 'starting' : st === 'error' ? 'error' : 'unknown';
+    return `<div class="service-row">
+      <div class="service-indicator ${cls}"></div>
+      <div class="service-name">${s.name}</div>
+      <div class="service-status ${tcls.replace('-text','') + '-text'}">${label}</div>
+      <div class="service-port">${s.port}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── KAFKA TOPICS ───────────────────────────────────────────────────────────
+async function loadTopics() {
+  const data = await fetchAPI('/topics');
+  const el = document.getElementById('topic-list');
+
+  if (data.error) {
+    el.innerHTML = `<div class="error-msg">${data.error}</div>`;
+    return;
+  }
+
+  const topics = [
+    { name: 'ais.raw',       key: 'ais_raw' },
+    { name: 'ais.validated', key: 'ais_validated' },
+    { name: 'ais.anomalies', key: 'ais_anomalies' },
+  ];
+
+  el.innerHTML = topics.map(t => {
+    const info = data[t.key] || {};
+    const count = info.message_count !== undefined ? info.message_count.toLocaleString() : '—';
+    const rate  = info.rate !== undefined ? `+${info.rate}/s` : '';
+    return `<div class="topic-row">
+      <div class="topic-name">${t.name}</div>
+      <div class="topic-count">${count}</div>
+      <div class="topic-rate">${rate}</div>
+    </div>`;
+  }).join('');
+
+  // Update anomaly metric
+  const anom = data['ais_anomalies'];
+  if (anom) {
+    document.getElementById('m-anomalies').textContent = (anom.message_count || 0).toLocaleString();
+  }
+}
+
+// ── NEO4J STATS ────────────────────────────────────────────────────────────
+async function loadNeo4j() {
+  const data = await fetchAPI('/neo4j');
+  const el = document.getElementById('graph-stats');
+
+  if (data.error) {
+    el.innerHTML = `<div class="error-msg" style="grid-column:span 2">${data.error}</div>`;
+    return;
+  }
+
+  const stats = [
+    { label: 'Vessel nodes',      value: data.vessels || 0,    color: 'var(--accent)' },
+    { label: 'Flag states',       value: data.flags || 0,      color: 'var(--green)' },
+    { label: 'EEZ zones',         value: data.eez_zones || 0,  color: 'var(--amber)' },
+    { label: 'Anomaly events',    value: data.anomalies || 0,  color: 'var(--red)' },
+    { label: 'Sanctioned entities', value: data.sanctioned || 0, color: 'var(--purple)' },
+    { label: 'Position records',  value: data.positions || 0,  color: 'var(--muted)' },
+  ];
+
+  el.innerHTML = stats.map(s =>
+    `<div class="graph-stat">
+      <div class="graph-stat-label">${s.label}</div>
+      <div class="graph-stat-value" style="color:${s.color}">${Number(s.value).toLocaleString()}</div>
+    </div>`
+  ).join('');
+
+  // Update top metrics
+  document.getElementById('m-vessels').textContent = (data.vessels || 0).toLocaleString();
+  document.getElementById('m-vessels-sub').textContent = `${data.flags || 0} flag states`;
+  document.getElementById('m-sanctioned').textContent = (data.sanctioned || 0).toLocaleString();
+  document.getElementById('m-sanctioned-sub').textContent = 'OFAC + OpenSanctions';
+}
+
+// ── VESSEL TABLE ───────────────────────────────────────────────────────────
+async function loadVessels() {
+  const data = await fetchAPI('/vessels');
+  const el = document.getElementById('vessel-table-wrap');
+
+  if (data.error) {
+    el.innerHTML = `<div class="error-msg">${data.error}</div>`;
+    return;
+  }
+
+  if (!data.vessels || data.vessels.length === 0) {
+    el.innerHTML = `<div class="loading">No vessels in Neo4j yet — is the ETL running?</div>`;
+    return;
+  }
+
+  el.innerHTML = `<table class="vessel-table">
+    <thead><tr>
+      <th>MMSI</th><th>Name</th><th>IMO</th><th>Flag</th>
+      <th>Speed (kts)</th><th>Last seen</th>
+    </tr></thead>
+    <tbody>
+    ${data.vessels.map(v => {
+      const spd = parseFloat(v.speed_kts || 0);
+      const pct = Math.min(100, (spd / 30) * 100);
+      const ts  = v.last_seen ? new Date(v.last_seen).toUTCString().replace(' GMT','') : '—';
+      return `<tr>
+        <td>${v.mmsi || '—'}</td>
+        <td>${v.name || '—'}</td>
+        <td>${v.imo || '—'}</td>
+        <td><span class="flag-chip">${v.flag || '??'}</span></td>
+        <td><div class="speed-bar">
+          <div class="speed-track"><div class="speed-fill" style="width:${pct}%"></div></div>
+          <span>${spd.toFixed(1)}</span>
+        </div></td>
+        <td>${ts}</td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table>`;
+}
+
+// ── CASSANDRA STATS ────────────────────────────────────────────────────────
+async function loadCassandra() {
+  const data = await fetchAPI('/cassandra');
+  if (!data.error) {
+    document.getElementById('m-messages').textContent =
+      (data.total_positions || 0).toLocaleString();
+    document.getElementById('m-messages-sub').textContent =
+      `${data.tracked_vessels || 0} vessels · 90-day TTL`;
+  }
+}
+
+// ── ANOMALY LOG ────────────────────────────────────────────────────────────
+async function loadAnomalies() {
+  const data = await fetchAPI('/anomalies');
+  const el = document.getElementById('anomaly-list');
+
+  if (data.error || !data.events || data.events.length === 0) {
+    el.innerHTML = `<div class="loading">No anomalies yet — waiting for detections...</div>`;
+    return;
+  }
+
+  el.innerHTML = data.events.slice(0, 20).map(e => {
+    const cls = e.technique === 'M-AIS-BEACON' ? 'beacon' : 'speed';
+    const ts  = e.detected_at ? new Date(e.detected_at).toLocaleTimeString('en-GB', {timeZone:'UTC'}) + ' UTC' : '—';
+    return `<div class="anomaly-row ${cls}">
+      <div class="anomaly-code">${e.technique || 'UNKNOWN'}</div>
+      <div class="anomaly-detail">
+        <div class="anomaly-mmsi">${e.mmsi || '—'} ${e.vessel_name ? '· ' + e.vessel_name : ''}</div>
+        <div class="anomaly-desc">${e.detail || ''}</div>
+      </div>
+      <div class="anomaly-time">${ts}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── REFRESH ALL ────────────────────────────────────────────────────────────
+async function refreshAll() {
+  document.getElementById('last-refresh').textContent = 'Refreshing...';
+  await Promise.all([
+    loadServices(),
+    loadTopics(),
+    loadNeo4j(),
+    loadVessels(),
+    loadCassandra(),
+    loadAnomalies(),
+  ]);
+  const now = new Date();
+  document.getElementById('last-refresh').textContent =
+    'Last refresh: ' + now.toUTCString().split(' ')[4] + ' UTC';
+}
+
+// Auto-refresh every 15 seconds
+setInterval(refreshAll, 15000);
+refreshAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+
+# ── Large data files (download separately, not committed to git) ──────────────
+ingestion/bathymetry/data/
+ingestion/eez/data/
+ingestion/ais/sample_data/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# ── Docker volumes (managed by Docker, not git) ───────────────────────────────
+volumes/
+
+# ── OS junk ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
