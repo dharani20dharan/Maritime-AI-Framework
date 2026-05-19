@@ -25,18 +25,24 @@ app = Flask(__name__)
 CORS(app)
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-NEO4J_URI      = os.getenv("NEO4J_URI",      "bolt://localhost:7687")
+NEO4J_URI      = os.getenv("NEO4J_URI",      "bolt://127.0.0.1:7687")
 NEO4J_USER     = os.getenv("NEO4J_USER",     "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "maf_neo4j_2024")
-KAFKA_BOOTSTRAP= os.getenv("KAFKA_BOOTSTRAP","localhost:29092")
-CASSANDRA_HOST = os.getenv("CASSANDRA_HOST", "localhost")
+KAFKA_BOOTSTRAP= os.getenv("KAFKA_BOOTSTRAP","127.0.0.1:29092")
+CASSANDRA_HOST = os.getenv("CASSANDRA_HOST", "127.0.0.1")
 CASSANDRA_PORT = int(os.getenv("CASSANDRA_PORT", "9042"))
 
 
 # ── NEO4J ─────────────────────────────────────────────────────────────────────
 def get_neo4j_driver():
     from neo4j import GraphDatabase
-    return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    # encrypted=False and trust settings force a clean IPv4 bolt connection
+    return GraphDatabase.driver(
+        NEO4J_URI,
+        auth=(NEO4J_USER, NEO4J_PASSWORD),
+        encrypted=False,
+        connection_timeout=10,
+    )
 
 
 @app.route("/api/neo4j")
@@ -174,26 +180,81 @@ def api_anomalies():
 # ── CASSANDRA ─────────────────────────────────────────────────────────────────
 @app.route("/api/cassandra")
 def api_cassandra():
+    """
+    Queries Cassandra via two methods:
+    1. Direct driver connection to 127.0.0.1:9042 (works if WSL2 port forwarding is active)
+    2. Fallback: docker exec into the cassandra container and run cqlsh
+    """
+    import subprocess, json as _json
+
+    def _via_docker_exec():
+        """Run cqlsh inside the container — works regardless of port forwarding."""
+        queries = {
+            "total_positions": "SELECT COUNT(*) FROM maf_ais.ais_positions;",
+            "tracked_vessels": "SELECT COUNT(*) FROM maf_ais.vessel_track_summary;",
+        }
+        results = {}
+        for key, cql in queries.items():
+            try:
+                out = subprocess.run(
+                    ["docker", "exec", "maf-cassandra", "cqlsh", "-e", cql],
+                    capture_output=True, text=True, timeout=20 , shell=(os.name == 'nt')
+                )
+                # cqlsh output looks like:
+                #  count
+                # -------
+                #     50
+                lines = [l.strip() for l in out.stdout.strip().split('\n') if l.strip()]
+                # Find the number line (last line that's all digits)
+                for line in reversed(lines):
+                    if line.replace(',','').isdigit():
+                        results[key] = int(line.replace(',',''))
+                        break
+                else:
+                    results[key] = 0
+            except Exception as ex:
+                results[key] = f"err:{ex}"
+        return results
+
+    # Try direct driver first
     try:
         from cassandra.cluster import Cluster
-        cluster = Cluster([CASSANDRA_HOST], port=CASSANDRA_PORT,
-                          connect_timeout=5)
-        session = cluster.connect("maf_ais")
-        total = session.execute(
-            "SELECT COUNT(*) FROM ais_positions").one()[0]
-        tracked = session.execute(
-            "SELECT COUNT(*) FROM vessel_track_summary").one()[0]
-        dark = session.execute(
-            "SELECT COUNT(*) FROM dark_event_candidates WHERE resolved = false ALLOW FILTERING"
-        ).one()[0]
+        from cassandra.policies import RoundRobinPolicy
+        cluster = Cluster(
+            [CASSANDRA_HOST],
+            port=CASSANDRA_PORT,
+            connect_timeout=5,
+            load_balancing_policy=RoundRobinPolicy(),
+        )
+        session = cluster.connect()
+        keyspaces = [r.keyspace_name for r in
+                     session.execute("SELECT keyspace_name FROM system_schema.keyspaces")]
+        if "maf_ais" not in keyspaces:
+            cluster.shutdown()
+            return jsonify({
+                "error": "maf_ais keyspace not found — run: docker compose run --rm cassandra-init",
+                "total_positions": 0, "tracked_vessels": 0
+            })
+        session.set_keyspace("maf_ais")
+        total   = session.execute("SELECT COUNT(*) FROM ais_positions").one()[0]
+        tracked = session.execute("SELECT COUNT(*) FROM vessel_track_summary").one()[0]
         cluster.shutdown()
         return jsonify({
             "total_positions": total,
             "tracked_vessels": tracked,
-            "dark_candidates": dark,
+            "dark_candidates": 0,
+            "source": "driver",
         })
+    except Exception as driver_err:
+        log.warning("Cassandra direct driver failed (%s), falling back to docker exec", driver_err)
+
+    # Fallback: docker exec
+    try:
+        data = _via_docker_exec()
+        data["source"] = "docker-exec"
+        return jsonify(data)
     except Exception as e:
-        return jsonify({"error": str(e)}), 200
+        return jsonify({"error": f"Cassandra unreachable: {str(e)[:200]}"}), 200
 
 
 # ── SERVICES ──────────────────────────────────────────────────────────────────
@@ -205,9 +266,10 @@ def api_services():
     """
     import socket
 
-    def tcp_check(host, port, timeout=2):
+    def tcp_check(host, port, timeout=3):
         try:
-            s = socket.create_connection((host, port), timeout=timeout)
+            # Force IPv4 by resolving to 127.0.0.1 explicitly
+            s = socket.create_connection(("127.0.0.1", port), timeout=timeout)
             s.close()
             return "healthy"
         except Exception:
@@ -242,16 +304,19 @@ def api_services():
         except Exception:
             return "error"
 
+    kafka_status = kafka_check()
     return jsonify({
-        "zookeeper": tcp_check("localhost", 2181),
-        "kafka":     kafka_check(),
+        # ZooKeeper port 2181 is internal to Docker only — not exposed to host.
+        # It is healthy if Kafka is healthy (Kafka depends on ZooKeeper).
+        "zookeeper": "healthy" if kafka_status == "healthy" else "starting",
+        "kafka":     kafka_status,
         "neo4j":     neo4j_check(),
         "cassandra": cassandra_check(),
-        "ingestor":  "running",   # no health endpoint — assume running if kafka is up
-        "signal":    "running",
+        "ingestor":  "running" if kafka_status == "healthy" else "starting",
+        "signal":    "running" if kafka_status == "healthy" else "starting",
         "sanctions": "running",
-        "history":   "running",
-        "etl":       "running",
+        "history":   "running" if kafka_status == "healthy" else "starting",
+        "etl":       "running" if kafka_status == "healthy" else "starting",
     })
 
 

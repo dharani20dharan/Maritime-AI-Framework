@@ -143,3 +143,10 @@ CREATE INDEX company_centrality IF NOT EXISTS
   (Company)-[:CONTROLS]->(Company)          // shell chain edges
   (Company)-[:REGISTERED_IN]->(FlagState)
 */
+
+// ── SANCTIONS MONITORING (added Week 1 update) ────────────────────────────────
+CREATE CONSTRAINT sanctions_alert_feed IF NOT EXISTS
+  FOR (a:SanctionsFeedAlert) REQUIRE a.feed_name IS UNIQUE;
+
+CREATE CONSTRAINT sanctions_refresh_log IF NOT EXISTS
+  FOR (r:SanctionsRefreshLog) REQUIRE r.id IS UNIQUE;

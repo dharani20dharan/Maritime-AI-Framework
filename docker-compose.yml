@@ -10,6 +10,7 @@ networks:
 volumes:
   kafka-data:
   zookeeper-data:
+  zookeeper-log:
   neo4j-data:
   neo4j-logs:
   bathymetry-data:
@@ -26,9 +27,10 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-      KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=ruok,stat,srvr" 
+      KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=ruok,stat,srvr"
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-log:/var/lib/zookeeper/log
     healthcheck:
       test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181 | grep imok"]
       interval: 10s
@@ -49,6 +51,10 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Pinned cluster ID — prevents InconsistentClusterIdException on restart.
+      # Generated once with: kafka-storage random-uuid
+      # If you ever wipe volumes, this ID stays the same so they always match.
+      KAFKA_CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qg"
       # Three listeners:
       #   INTERNAL  — container-to-container on Docker network (kafka:9092)
       #   UI        — for Kafka UI on the same Docker network (kafka:9093)
@@ -188,9 +194,15 @@ services:
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: maf_neo4j_2024
-      OFAC_SDN_URL: https://sanctionslist.ofac.treas.gov/Home/SdnList
+      OFAC_SDN_URL: https://www.treasury.gov/ofac/downloads/sdn.xml
       OPENSANCTIONS_URL: https://data.opensanctions.org/datasets/latest/vessels/targets.nested.json
-      REFRESH_INTERVAL_SECONDS: "3600"   # hourly; capped at 24h max
+      UN_XML_URL: https://scsanctions.un.org/resources/xml/en/consolidated.xml
+      EU_FSF_URL: https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content
+      REFRESH_INTERVAL_SECONDS: "900"    # 15 minutes — per implementation plan
+      ALERT_AFTER_FAILURES: "3"          # write Neo4j alert after 3 consecutive failures
+      LOCAL_FEED_DIR: /feeds             # mount local XML files here as fallback
+    volumes:
+      - ./ingestion/sanctions/feeds:/feeds   # place manually downloaded XMLs here
     restart: unless-stopped
 
   # ── EEZ LOADER ────────────────────────────────────────────────────────────
