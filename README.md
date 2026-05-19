@@ -1,5 +1,5 @@
 # MAF — Maritime AI Framework
-## Engineer A Setup & Data Sources
+## Setup & Data Sources
 
 ---
 
@@ -70,13 +70,13 @@ Services will be available at:
 |-------|----------|-----------|----------|
 | `ais.raw` | ais-ingestor | — | All raw AIS messages, unvalidated |
 | `ais.validated` | ais-ingestor | signal-analyser, neo4j-etl | Valid Contract A1 envelopes |
-| `ais.anomalies` | signal-analyser | **Engineer B** (critic layer) | M-AIS-BEACON, M-SPEED-ANOMALY events |
+| `ais.anomalies` | signal-analyser | (critic layer) | M-AIS-BEACON, M-SPEED-ANOMALY events |
 
 ---
 
-### For Engineer B
 
-Your entry points:
+
+### Entry points for merging:
 
 1. **Neo4j** at `bolt://localhost:7687` (user: `neo4j`, pw: in `.env`)
    - Schema documented in `infra/neo4j/init/schema_init.cypher`
@@ -93,17 +93,3 @@ Your entry points:
    - Required fields: `hypothesis`, `evidence_for`, `evidence_against`,
      `verdict` (CONFIRMED|DISMISSED|ESCALATE), `confidence` (0.0–1.0)
 
----
-
-### Week 1 checklist (Engineer A)
-
-- [x] Docker Compose stack (Kafka, ZooKeeper, Neo4j, NiFi)
-- [x] AIS ingestor with replay mode + AISStream.io live connector
-- [x] Contract A1 message envelope (shared with Engineer B)
-- [x] Signal analyser: M-AIS-BEACON (CV), M-SPEED-ANOMALY
-- [x] Sanctions ingestor: OFAC SDN + OpenSanctions
-- [x] Neo4j schema + ETL consumer
-- [ ] **TODO**: Register at AISStream.io and add API key to `.env`
-- [ ] **TODO**: Download GEBCO 2026 NetCDF and run bathymetry-loader
-- [ ] **TODO**: Download Marine Regions EEZ GeoJSON and run eez-loader
-- [ ] **End of week sync**: schema alignment with Engineer B (30 min)
