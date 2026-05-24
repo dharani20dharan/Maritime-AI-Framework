@@ -10,10 +10,14 @@ import json
 import logging
 import os
 import statistics
+import time
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
 from confluent_kafka import Consumer, Producer, KafkaError
+from neo4j import GraphDatabase
+from shapely import wkt
+from shapely.geometry import Point
 
 log = logging.getLogger("signal-analyser")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s — %(message)s")
@@ -21,6 +25,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 KAFKA_BOOTSTRAP   = os.getenv("KAFKA_BOOTSTRAP", "localhost:29092")
 INPUT_TOPIC       = os.getenv("KAFKA_INPUT_TOPIC", "ais.validated")
 OUTPUT_TOPIC      = os.getenv("KAFKA_OUTPUT_TOPIC", "ais.anomalies")
+NEO4J_URI         = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+NEO4J_USER        = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD    = os.getenv("NEO4J_PASSWORD", "maf_neo4j_2024")
 CV_THRESHOLD      = float(os.getenv("CV_BEACON_THRESHOLD", "0.01"))
 SPEED_MAX_KNOTS   = float(os.getenv("SPEED_MAX_KNOTS", "50"))
 WINDOW_SIZE       = int(os.getenv("CV_WINDOW_SIZE", "20"))    # pings to accumulate before scoring
@@ -28,8 +35,96 @@ WINDOW_SIZE       = int(os.getenv("CV_WINDOW_SIZE", "20"))    # pings to accumul
 # Per-vessel state: sliding window of ping timestamps (epoch seconds)
 ping_windows: dict[str, deque] = defaultdict(lambda: deque(maxlen=WINDOW_SIZE))
 
+# State tracking for EEZ entry to trigger anomaly only once per zone
+vessel_eez_state: dict[str, str] = {}
+
+
+
+# ── NEO4J EEZ LOADER ────────────────────────────────────────────────────────
+
+def load_eez_zones() -> list[dict]:
+    """Fetch all EEZ boundaries from Neo4j to keep geometry in one place."""
+    zones = []
+    try:
+        driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        with driver.session() as session:
+            result = session.run("MATCH (e:EEZZone) RETURN e.zone_id AS zone_id, e.country_iso AS country_iso, e.zone_name AS zone_name, e.geometry_wkt AS wkt")
+            for record in result:
+                if record["wkt"]:
+                    try:
+                        zones.append({
+                            "zone_id": record["zone_id"],
+                            "country_iso": record["country_iso"] or "",
+                            "zone_name": record["zone_name"] or "Unknown Zone",
+                            "geom": wkt.loads(record["wkt"])
+                        })
+                    except Exception as e:
+                        log.warning("Failed to parse WKT for EEZ %s: %s", record["zone_id"], e)
+        driver.close()
+        log.info("Loaded %d EEZ boundaries from Neo4j for spatial checks", len(zones))
+    except Exception as e:
+        log.error("Could not load EEZ boundaries from Neo4j: %s", e)
+    return zones
 
 # ── TECHNIQUE DETECTORS ───────────────────────────────────────────────────────
+
+def detect_eez_violation(envelope: dict, eez_zones: list[dict]) -> dict | None:
+    """
+    M-EEZ-VIOLATION
+    Point-in-polygon check. Triggers if a vessel enters a foreign EEZ without
+    a matching flag. Only triggers once upon entry.
+    """
+    lat, lon = envelope.get("lat"), envelope.get("lon")
+    if lat is None or lon is None or not eez_zones:
+        return None
+        
+    mmsi = envelope["mmsi"]
+    flag = envelope.get("flag", "")
+    pt = Point(lon, lat)
+    
+    current_zone = None
+    for zone in eez_zones:
+        if zone["geom"].contains(pt):
+            current_zone = zone
+            break
+            
+    last_zone_id = vessel_eez_state.get(mmsi)
+    
+    if current_zone:
+        current_zone_id = current_zone["zone_id"]
+        vessel_eez_state[mmsi] = current_zone_id
+        
+        # Check if newly entered this zone
+        if last_zone_id != current_zone_id:
+            # Basic authorisation check: vessel flag matches EEZ sovereign ISO
+            # Production would use a robust Alpha-2 -> Alpha-3 registry mapping
+            country_iso = current_zone["country_iso"]
+            
+            # Simple mismatch check (if flag is present but not in the country ISO string)
+            is_foreign = False
+            if flag and len(flag) >= 2 and country_iso:
+                # E.g., 'LR' in 'LBR' -> True, 'PA' in 'PAN' -> True, 'CN' in 'CHN' -> False
+                if flag not in country_iso:
+                    is_foreign = True
+            elif flag:
+                # Flag known but EEZ country ISO unknown -> flag as suspicious
+                is_foreign = True
+                
+            if is_foreign:
+                return {
+                    "technique": "M-EEZ-VIOLATION",
+                    "mmsi": mmsi,
+                    "confidence": 0.85,
+                    "detail": f"Unauthorised entry into {current_zone['zone_name']} (ISO: {country_iso}) by vessel flagged '{flag}'",
+                    "zone_id": current_zone_id
+                }
+    else:
+        # Left all zones
+        if last_zone_id is not None:
+            vessel_eez_state[mmsi] = None
+            
+    return None
+
 
 def detect_beacon_pattern(mmsi: str, timestamp_iso: str) -> dict | None:
     """
@@ -115,12 +210,21 @@ def build_anomaly_event(detection: dict, source_envelope: dict) -> dict:
 
 # ── MAIN LOOP ─────────────────────────────────────────────────────────────────
 def run():
+    eez_zones = []
+    for attempt in range(5):
+        eez_zones = load_eez_zones()
+        if eez_zones:
+            break
+        log.warning("Waiting for Neo4j EEZ data... (attempt %d/5)", attempt + 1)
+        time.sleep(5)
+        
     consumer = Consumer({
         "bootstrap.servers": KAFKA_BOOTSTRAP,
         "group.id": "maf-signal-analyser",
         "auto.offset.reset": "earliest",
         "enable.auto.commit": True,
     })
+
     producer = Producer({
         "bootstrap.servers": KAFKA_BOOTSTRAP,
         "acks": "all",
@@ -160,6 +264,10 @@ def run():
             speed = detect_speed_anomaly(envelope)
             if speed:
                 detections.append(speed)
+
+            eez = detect_eez_violation(envelope, eez_zones)
+            if eez:
+                detections.append(eez)
 
             for detection in detections:
                 event = build_anomaly_event(detection, envelope)
