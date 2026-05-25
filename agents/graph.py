@@ -143,6 +143,42 @@ def generate_report_node(state: AgentState):
         report_dict = result.dict()
         print(f"   -> Verdict: {report_dict['verdict']} (Confidence: {report_dict['confidence']})")
         
+        # Write report back to Neo4j database
+        try:
+            from datetime import datetime, timezone
+            timestamp = datetime.now(timezone.utc).isoformat()
+            report_id = f"SAR-{state['vessel_imo']}-{int(datetime.now(timezone.utc).timestamp())}"
+            
+            driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "maf_neo4j_2024"))
+            with driver.session() as session:
+                write_query = """
+                MATCH (v:Vessel {imo: $imo})
+                CREATE (r:Report {
+                    report_id: $report_id,
+                    hypothesis: $hypothesis,
+                    evidence_for: $evidence_for,
+                    evidence_against: $evidence_against,
+                    verdict: $verdict,
+                    confidence: $confidence,
+                    generated_at: $generated_at
+                })
+                CREATE (v)-[:HAS_REPORT]->(r)
+                RETURN r.report_id AS id
+                """
+                session.run(write_query,
+                            imo=state["vessel_imo"],
+                            report_id=report_id,
+                            hypothesis=report_dict["hypothesis"],
+                            evidence_for=report_dict["evidence_for"],
+                            evidence_against=report_dict["evidence_against"],
+                            verdict=report_dict["verdict"],
+                            confidence=report_dict["confidence"],
+                            generated_at=timestamp)
+                print(f"   -> Successfully saved SAR Report {report_id} to Neo4j.")
+            driver.close()
+        except Exception as db_err:
+            print(f"   -> [Warning] Failed to write SAR Report to Neo4j: {db_err}")
+            
         return {"final_report": report_dict}
         
     except Exception as e:
