@@ -125,8 +125,13 @@ async def consume_live(producer: Producer):
         "FilterMessageTypes": ["PositionReport", "ShipStaticData"],
     }
 
+    import ssl
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
     log.info("Connecting to AISStream.io ...")
-    async with websockets.connect(AISSTREAM_WS_URL) as ws:
+    async with websockets.connect(AISSTREAM_WS_URL, ssl=ssl_context) as ws:
         await ws.send(json.dumps(subscription))
         log.info("Subscribed — receiving global AIS feed")
         async for raw_msg in ws:

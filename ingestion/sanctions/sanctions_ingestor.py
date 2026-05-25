@@ -48,7 +48,7 @@ ALERT_THRESHOLD = int(os.getenv("ALERT_AFTER_FAILURES",     "3"))
 LOCAL_FEED_DIR  = os.getenv("LOCAL_FEED_DIR",               "/feeds")
 
 OFAC_SDN_URL      = "https://www.treasury.gov/ofac/downloads/sdn.xml"
-OPENSANCTIONS_URL = "https://data.opensanctions.org/datasets/latest/vessels/targets.nested.json"
+OPENSANCTIONS_URL = "https://data.opensanctions.org/datasets/latest/sanctions/targets.nested.json"
 UN_XML_URL        = "https://scsanctions.un.org/resources/xml/en/consolidated.xml"
 EU_FSF_URL        = "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw"
 
@@ -66,7 +66,7 @@ HEADERS = {
 # ---------- DATA MODEL -------------------------------------------------------
 @dataclass
 class SanctionedVessel:
-    entity_id:    str
+    sanction_id:  str
     name:         str
     sources:      list
     programs:     list

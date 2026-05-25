@@ -18,6 +18,7 @@ from langgraph.graph import StateGraph, END
 from agents.state import AgentState
 from tools.sanction_scorer import SanctionScorer
 from tools.scrapers import RegistryCrossReferencer
+from neo4j import GraphDatabase
 from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field
 """
@@ -47,24 +48,29 @@ class SAROutput(BaseModel):
 # Node 1: Data Retrieval Agent
 # ---------------------------------------------------------
 def retrieve_data_node(state: AgentState):
-    """Retrieves raw AIS and registry data."""
-    print(f"\n[Agent 1: Data Retriever] Fetching raw data and registry info for IMO: {state['vessel_imo']}")
+    """Retrieves raw AIS and registry data from Neo4j."""
+    print(f"\n[Agent 1: Data Retriever] Fetching live data for IMO: {state['vessel_imo']}")
     
-    # Mock AIS Data (In production this comes from Kafka/Neo4j)
-    mock_raw_data = {
-        "last_known_port": "UNKNOWN"
-    }
-    if state["vessel_imo"] == "9988776":
-        mock_raw_data["last_known_port"] = "IRBND (Bandar Abbas)"
-    elif state["vessel_imo"] == "9123456":
-        mock_raw_data["last_known_port"] = "USNYC (New York)"
+    raw_data = {"name": "UNKNOWN", "vessel_type": "UNKNOWN"}
+    
+    try:
+        # Connect to Neo4j to pull latest vessel node data
+        driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "maf_neo4j_2024"))
+        with driver.session() as session:
+            result = session.run("MATCH (v:Vessel {imo: $imo}) RETURN v.name AS name, v.vessel_type AS vessel_type", imo=state["vessel_imo"]).single()
+            if result:
+                raw_data["name"] = result.get("name", "UNKNOWN")
+                raw_data["vessel_type"] = result.get("vessel_type", "UNKNOWN")
+        driver.close()
+    except Exception as e:
+        print(f"   -> [Warning] Failed to pull live data from Neo4j: {e}")
 
     # Parallel Registry Scraping
     referencer = RegistryCrossReferencer()
     registry_data = referencer.scrape_parallel(state["vessel_imo"])
 
     return {
-        "raw_vessel_data": mock_raw_data,
+        "raw_vessel_data": raw_data,
         "registry_data": registry_data
     }
 
@@ -188,17 +194,40 @@ app = workflow.compile()
 # Example Execution
 # ---------------------------------------------------------
 if __name__ == "__main__":
-    print("--- Executing LangGraph Workflow for Normal Vessel ---")
-    initial_state_1 = {"vessel_imo": "9123456"}
-    app.invoke(initial_state_1)
+    print("--- Starting LangGraph Orchestrator (Live Data Mode) ---")
     
-    print("\n--- Executing LangGraph Workflow for Suspicious Vessel ---")
-    initial_state_2 = {"vessel_imo": "9988776"}
-    final_state = app.invoke(initial_state_2)
-    
-    print("\n[Final Output Received from Graph]")
-    report = final_state.get("final_report")
-    if report:
-        pprint(report)
+    # 1. Dynamically fetch vessels from the Neo4j Database
+    test_vessels = []
+    try:
+        driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "maf_neo4j_2024"))
+        with driver.session() as session:
+            # First, fetch 2 LIVE, safe commercial vessels that just pinged
+            safe_result = session.run("MATCH (v:Vessel) WHERE NOT v.imo STARTS WITH '900' RETURN DISTINCT v.imo AS imo LIMIT 2")
+            test_vessels.extend([record["imo"] for record in safe_result])
+            
+            # Second, fetch 1 KNOWN HIGH-RISK test vessel (to prove the AI catches anomalies)
+            risk_result = session.run("MATCH (v:Vessel)-[:INVOLVED_IN]->(e:Event) WHERE v.imo STARTS WITH '900' RETURN DISTINCT v.imo AS imo LIMIT 1")
+            test_vessels.extend([record["imo"] for record in risk_result])
+        driver.close()
+    except Exception as e:
+        print(f"Failed to fetch live vessels from Neo4j: {e}")
+        # Fallback to standard test ships if DB is down
+        live_test_vessels = ["9123456"]
+
+    if not test_vessels:
+        print("No active vessels found in the database. Is the ingestor running?")
     else:
-        print("No report generated.")
+        print(f"Found {len(test_vessels)} active vessels in the database. Beginning analysis...")
+        
+        # 2. Run the AI pipeline on the dynamically fetched vessels
+        for imo in test_vessels:
+            print(f"\n--- Executing LangGraph Workflow for Vessel (IMO: {imo}) ---")
+            state = {"vessel_imo": imo}
+            final_state = app.invoke(state)
+            
+            print(f"\n[Final Output Received from Graph for IMO {imo}]")
+            report = final_state.get("final_report")
+            if report:
+                pprint(report)
+            else:
+                print("No report generated (Vessel may not have been high-risk).")

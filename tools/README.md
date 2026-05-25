@@ -101,3 +101,57 @@ print(eq_data)
 
 > [!TIP]
 > **Upgrading for Production:** To bypass the mock fallback in a real production environment, Engineer A should integrate a residential proxy network (e.g., BrightData) or inject authenticated session cookies into the `self.session` object inside the scraper classes.
+
+## Bathymetric Depth lookup (`bathymetry.py`)
+
+The `bathymetry.py` module compares a vessel's reported physical draft against local sea depths to verify coordinate legitimacy and detect GPS spoofing.
+
+### How it works
+The `BathymetryEngine` operates in a two-tier mode:
+1. **Authoritative Mode:** Reads high-resolution NetCDF grids (`GEBCO_2026.nc`) when available.
+2. **Offline/Fallback Mode:** Utilizes a highly optimized geographic coordinate model mapping global trade lanes (e.g. Strait of Hormuz, Strait of Malacca, Red Sea, English Channel) to realistic seabed depths.
+- **Rule Trigger:** Linked directly to `M-TRACK-PLAUSIBILITY` in `anomaly_rules.py` to assert keel-depth safety clearance.
+
+```python
+from tools.bathymetry import BathymetryEngine
+
+engine = BathymetryEngine()
+plausible, depth, msg = engine.verify_draft_plausibility(lat=2.5, lon=101.5, draft_m=28.0)
+print(f"Floating check: {plausible} | Seabed: {depth}m | Details: {msg}")
+```
+
+## Graph Centrality Pipeline (`gds_centrality.py`)
+
+The `gds_centrality.py` script executes Graph Data Science (GDS) Betweenness Centrality on Neo4j to identify central fleet brokers managing the shadow fleet network.
+
+### How it works
+1. **Catalog Safety Seeds:** Merges dummy company and vessel nodes to guarantee that GDS projects successfully on clean or empty databases.
+2. **Graph Projection:** Projects the corporate ownership graph (` corporate-fleet`) in-memory.
+3. **Writeback & Propagation:** Calculates betweenness centrality, tags high-centrality parent entities (`high_betweenness_parent = true`), propagates the status to associated vessels, and safely drops projections.
+
+```python
+from tools.gds_centrality import GDSCentralityJob
+
+job = GDSCentralityJob()
+res = job.run_betweenness_centrality()
+print("GDS Job Summary:", res)
+job.close()
+```
+
+## Spatio-Temporal STS Detector (`sts_detector.py`)
+
+The `sts_detector.py` engine analyzes spatial and temporal boundaries across different vessels to catch Ship-to-Ship (STS) loitering and fuel transfers.
+
+### How it works
+- Scans for distinct vessels exhibiting overlapping intervals of `AIS_GAP` or `LOITERING` telemetries.
+- Computes overlap duration and confidence, creates `STS_TRANSFER` Event nodes in Neo4j, and hooks up `(:Vessel)-[:INVOLVED_IN]->(:Event)` relationships dynamically.
+
+```python
+from tools.sts_detector import STSDetector
+
+detector = STSDetector()
+detections = detector.run_sts_detection(target_imo="9000000")
+print("Rendezvous events:", detections)
+detector.close()
+```
+

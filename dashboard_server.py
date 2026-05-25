@@ -328,10 +328,10 @@ def health():
 
 if __name__ == "__main__":
     print("""
-  ╔══════════════════════════════════════════╗
-  ║  MAF Dashboard Server                    ║
-  ║  http://localhost:5000                   ║
-  ╚══════════════════════════════════════════╝
+  +------------------------------------------+
+  |  MAF Dashboard Server                    |
+  |  http://localhost:5000                   |
+  +------------------------------------------+
 
   Queries: Neo4j · Kafka · Cassandra
   Open dashboard.html in your browser.
