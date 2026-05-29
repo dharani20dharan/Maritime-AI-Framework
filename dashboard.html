@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MAF — Maritime AI Framework · Live Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 
@@ -600,6 +602,55 @@
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border2); }
+
+  /* ── LEAFLET CUSTOM STYLES ──────────────────────────────────────────────── */
+  #map {
+    border: 1px solid var(--border);
+    transition: border-color 0.3s;
+  }
+  #map:hover {
+    border-color: var(--accent2);
+  }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+    background: rgba(13, 17, 23, 0.95) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(8px);
+    border-radius: 2px !important;
+    font-family: var(--font-mono) !important;
+  }
+  .leaflet-popup-content {
+    margin: 12px 16px !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+  }
+  .leaflet-popup-close-button {
+    color: var(--muted) !important;
+  }
+  .leaflet-popup-close-button:hover {
+    color: var(--accent) !important;
+  }
+  .leaflet-bar {
+    border: 1px solid var(--border) !important;
+    box-shadow: none !important;
+    border-radius: 2px !important;
+  }
+  .leaflet-bar a {
+    background: var(--bg2) !important;
+    color: var(--text) !important;
+    border-bottom: 1px solid var(--border) !important;
+    transition: all 0.2s;
+  }
+  .leaflet-bar a:hover {
+    background: var(--bg3) !important;
+    color: var(--accent) !important;
+  }
+  @keyframes pulse-border {
+    0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.5); }
+    70% { box-shadow: 0 0 0 8px rgba(255, 68, 68, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); }
+  }
 </style>
 </head>
 <body>
@@ -707,6 +758,69 @@
     <div class="card-label">Neo4j knowledge graph</div>
     <div class="graph-stats" id="graph-stats">
       <div class="loading">querying neo4j...</div>
+    </div>
+  </div>
+
+  <!-- ── LIVE GEOSPATIAL MAP ──────────────────────────────────────────── -->
+  <div class="card span-2" style="padding: 0; min-height: 480px; display: flex; flex-direction: column; position: relative;">
+    <div class="card-label" style="padding: 18px 20px 0; margin-bottom: 8px;">Live Vessel Geospatial Tracks · Global Fishing Watch Engine</div>
+    <div id="map" style="flex: 1; width: 100%; min-height: 420px; background: #080c10; z-index: 1;"></div>
+    
+    <!-- Floating Track Indicator Overlay -->
+    <div id="track-overlay" style="display:none; position:absolute; top:54px; right:16px; z-index:999; background:rgba(8,12,16,0.9); border:1px solid var(--border); padding:8px 12px; font-family:var(--font-mono); font-size:10px; align-items:center; gap:10px; box-shadow:0 4px 12px rgba(0,0,0,0.5); backdrop-filter:blur(4px);">
+      <div style="width:6px; height:6px; background:var(--accent); border-radius:50%; animation:pulse 2s infinite;"></div>
+      <span>Track Active: MMSI <span id="track-overlay-mmsi" style="color:#fff;">—</span> (<span id="track-overlay-source" style="color:var(--green);">—</span>)</span>
+      <button onclick="clearActiveTrack()" style="background:rgba(255,68,68,0.1); border:1px solid rgba(255,68,68,0.3); color:var(--red); padding:2px 6px; font-size:8px; cursor:pointer; text-transform:uppercase; outline:none;">Clear</button>
+    </div>
+  </div>
+
+  <div class="card" style="display: flex; flex-direction: column; justify-content: space-between; min-height: 480px;">
+    <div>
+      <div class="card-label">Live Map Controls & Analytics</div>
+      
+      <!-- Filter Controls -->
+      <div class="map-filters" style="margin-bottom: 16px;">
+        <span style="font-family:var(--font-mono); font-size:9px; color:var(--muted); text-transform:uppercase; display:block; margin-bottom:8px;">Risk Classification Filter</span>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <button class="filter-btn active" id="btn-filter-all" onclick="filterMap('all')" style="font-family:var(--font-mono); font-size:10px; background:rgba(0,212,255,0.05); border:1px solid var(--accent); color:var(--accent); padding:6px 12px; cursor:pointer; text-align:left; text-transform:uppercase; letter-spacing:0.05em; width:100%; transition:all 0.15s; outline:none;">Show All Vessels</button>
+          <button class="filter-btn" id="btn-filter-high" onclick="filterMap('high')" style="font-family:var(--font-mono); font-size:10px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:6px 12px; cursor:pointer; text-align:left; text-transform:uppercase; letter-spacing:0.05em; width:100%; transition:all 0.15s; outline:none;">High Risk Only (Score ≥ 80)</button>
+          <button class="filter-btn" id="btn-filter-sts" onclick="filterMap('sts')" style="font-family:var(--font-mono); font-size:10px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:6px 12px; cursor:pointer; text-align:left; text-transform:uppercase; letter-spacing:0.05em; width:100%; transition:all 0.15s; outline:none;">STS Rendezvous Only</button>
+        </div>
+      </div>
+
+      <!-- Quick Pan Buttons -->
+      <div class="map-hotspots" style="margin-bottom: 16px;">
+        <span style="font-family:var(--font-mono); font-size:9px; color:var(--muted); text-transform:uppercase; display:block; margin-bottom:8px;">Maritime Chokepoints Focus</span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+          <button onclick="zoomToHotspot([15.0, 65.0], 5)" style="font-family:var(--font-mono); font-size:9px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:5px 8px; cursor:pointer; text-transform:uppercase; text-align:center; transition:all 0.15s; outline:none;">Arabian Sea</button>
+          <button onclick="zoomToHotspot([2.0, 101.5], 6)" style="font-family:var(--font-mono); font-size:9px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:5px 8px; cursor:pointer; text-transform:uppercase; text-align:center; transition:all 0.15s; outline:none;">Malacca Strait</button>
+          <button onclick="zoomToHotspot([12.5, 43.3], 7)" style="font-family:var(--font-mono); font-size:9px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:5px 8px; cursor:pointer; text-transform:uppercase; text-align:center; transition:all 0.15s; outline:none;">Bab-el-Mandeb</button>
+          <button onclick="zoomToHotspot([26.5, 56.5], 7)" style="font-family:var(--font-mono); font-size:9px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:5px 8px; cursor:pointer; text-transform:uppercase; text-align:center; transition:all 0.15s; outline:none;">Strait of Hormuz</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map Legend -->
+    <div class="map-legend" style="border-top:1px dashed var(--border); padding-top:12px; margin-top:8px;">
+      <span style="font-family:var(--font-mono); font-size:9px; color:var(--muted); text-transform:uppercase; display:block; margin-bottom:8px;">Geospatial Legend</span>
+      <div style="display:flex; flex-direction:column; gap:6px; font-family:var(--font-mono); font-size:10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:8px; height:8px; border-radius:50%; background:var(--red); box-shadow:0 0 6px var(--red);"></div>
+          <span>High Risk / Violator (≥ 80)</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:8px; height:8px; border-radius:50%; background:var(--amber); box-shadow:0 0 6px var(--amber);"></div>
+          <span>Suspicious / Review (50 - 79)</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green);"></div>
+          <span>Low Risk / Compliant (< 50)</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:10px; height:10px; border-radius:50%; border:1.5px solid var(--red); background:rgba(255,68,68,0.15); animation: pulse-border 1.5s infinite;"></div>
+          <span>STS Rendezvous Area</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -960,6 +1074,197 @@ async function loadAnomalies() {
   }).join('');
 }
 
+// ── GEOSPATIAL MAP ENGINE ──────────────────────────────────────────────────
+let map;
+let vesselLayer = L.layerGroup();
+let stsLayer = L.layerGroup();
+let trackLayer = L.layerGroup();
+let allVesselsData = [];
+let allEventsData = [];
+let currentFilter = 'all';
+
+function initMap() {
+  if (map) return; // Prevent double init
+  
+  map = L.map('map', {
+    zoomControl: true,
+    attributionControl: true,
+    preferCanvas: true // Use HTML5 Canvas to render all 32,000+ points at 60 FPS
+  }).setView([15.0, 75.0], 4);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20
+  }).addTo(map);
+
+  vesselLayer.addTo(map);
+  stsLayer.addTo(map);
+  trackLayer.addTo(map);
+  
+  // Custom zoom control placement to fit layout
+  map.zoomControl.setPosition('topleft');
+}
+
+async function loadMapData() {
+  try {
+    const data = await fetchAPI('/map-data');
+    if (data && data.vessels) {
+      allVesselsData = data.vessels;
+    }
+  } catch (e) {
+    console.error("Failed to load map vessels:", e);
+  }
+  
+  try {
+    const eventData = await fetchAPI('/map-events');
+    if (eventData && eventData.events) {
+      allEventsData = eventData.events;
+    }
+  } catch (e) {
+    console.error("Failed to load map events:", e);
+  }
+  
+  renderMapMarkers();
+}
+
+function renderMapMarkers() {
+  vesselLayer.clearLayers();
+  stsLayer.clearLayers();
+
+  // Render Events
+  if (currentFilter === 'all' || currentFilter === 'sts') {
+    allEventsData.forEach(event => {
+      if (event.lat && event.lon) {
+        const isSts = event.type === 'STS_TRANSFER';
+        
+        // Hide if we only want to show STS rendezvous and this is not one
+        if (currentFilter === 'sts' && !isSts) {
+          return;
+        }
+
+        const color = isSts ? '#ff4444' : '#ffb300'; // Red for STS, Amber for general anomalies
+        
+        const stsCircle = L.circle([event.lat, event.lon], {
+          color: color,
+          fillColor: color,
+          fillOpacity: isSts ? 0.12 : 0.08,
+          weight: 1.5,
+          dashArray: isSts ? '3, 4' : '2, 3',
+          radius: isSts ? 12000 : 1500 // 12km for STS zones, 1.5km for point anomalies
+        }).addTo(stsLayer);
+
+        const confidencePct = event.confidence ? Math.round(event.confidence * 100) : 85;
+        
+        // Dynamic title based on event type
+        let eventTitle = '⚠ Operational Anomaly';
+        if (event.type === 'STS_TRANSFER') eventTitle = '⚠ Ship-To-Ship Rendezvous';
+        else if (event.type === 'SPEED_ANOMALY' || event.type === 'M-SPEED-ANOMALY') eventTitle = '⚠ Speed Anomaly';
+        else if (event.type === 'BEACON_PATTERN' || event.type === 'M-AIS-BEACON') eventTitle = '⚠ Transponder Anomaly';
+        else if (event.type === 'EEZ_VIOLATION' || event.type === 'M-EEZ-VIOLATION') eventTitle = '⚠ Boundary Violation';
+
+        const popupContent = `
+          <div style="font-family:var(--font-mono); color:var(--text); min-width: 180px;">
+            <div style="color:${color}; font-weight:600; text-transform:uppercase; margin-bottom:4px; font-size:10px;">${eventTitle}</div>
+            <div style="border-bottom:1px solid var(--border); padding-bottom:4px; margin-bottom:6px; font-size:8px; color:var(--muted)">Event ID: ${event.id || 'N/A'}</div>
+            <div style="margin-bottom:6px; font-size:10px; line-height:1.3;">${event.description || 'Maritime anomaly detected.'}</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; border-top:1px dashed var(--border); padding-top:4px; margin-top:4px;">
+              <span style="color:var(--muted);">Confidence:</span>
+              <span style="color:${color}; font-weight:600;">${confidencePct}%</span>
+            </div>
+          </div>
+        `;
+        stsCircle.bindPopup(popupContent);
+      }
+    });
+  }
+
+  // Render Vessel Markers
+  if (currentFilter === 'all' || currentFilter === 'high') {
+    allVesselsData.forEach(v => {
+      if (v.lat && v.lon) {
+        const score = parseInt(v.risk_score || 0);
+        
+        if (currentFilter === 'high' && score < 80) {
+          return;
+        }
+
+        let color = '#00e676'; // Theme Green
+        if (score >= 80) {
+          color = '#ff4444'; // Theme Red
+        } else if (score >= 50) {
+          color = '#ffb300'; // Theme Amber
+        }
+
+        const marker = L.circleMarker([v.lat, v.lon], {
+          radius: score >= 80 ? 6 : 5,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.85,
+          weight: 1.5,
+          stroke: true
+        }).addTo(vesselLayer);
+
+        const popupContent = `
+          <div style="font-family:var(--font-mono); color:var(--text); min-width:180px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span style="font-weight:600; color:#fff; font-size:11px;">${v.name || 'UNKNOWN VESSEL'}</span>
+              <span style="background:rgba(0,212,255,0.08); border:1px solid rgba(0,212,255,0.2); padding:1px 4px; font-size:8px; color:var(--accent); text-transform:uppercase;">${v.vessel_type || 'cargo'}</span>
+            </div>
+            <div style="border-bottom:1px solid var(--border); padding-bottom:6px; margin-bottom:6px; font-size:8px; color:var(--muted)">MMSI: ${v.mmsi} · IMO: ${v.imo || '—'}</div>
+            <table style="width:100%; border-collapse:collapse; font-size:10px; margin-bottom:8px;">
+              <tr>
+                <td style="color:var(--muted); padding:2px 0;">Speed:</td>
+                <td style="text-align:right; font-weight:600; color:#fff;">${parseFloat(v.speed || 0).toFixed(1)} kts</td>
+              </tr>
+              <tr>
+                <td style="color:var(--muted); padding:2px 0;">Position:</td>
+                <td style="text-align:right; color:#fff;">${parseFloat(v.lat).toFixed(4)}, ${parseFloat(v.lon).toFixed(4)}</td>
+              </tr>
+              <tr>
+                <td style="color:var(--muted); padding:2px 0;">Risk Score:</td>
+                <td style="text-align:right; font-weight:600; color:${color};">${score}%</td>
+              </tr>
+            </table>
+            <div style="border-top:1px solid var(--border); padding-top:6px; display:flex; justify-content:space-between; gap:4px;">
+              <button onclick="showVesselGraphPath('${v.mmsi}')" style="flex:1; font-family:var(--font-mono); font-size:8px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:3px 4px; cursor:pointer; text-transform:uppercase; text-align:center; outline:none;">Graph Path</button>
+              <button onclick="showVesselTrack('${v.mmsi}')" style="flex:1; font-family:var(--font-mono); font-size:8px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:3px 4px; cursor:pointer; text-transform:uppercase; text-align:center; outline:none;">AIS Tracks</button>
+            </div>
+          </div>
+        `;
+        marker.bindPopup(popupContent);
+      }
+    });
+  }
+}
+
+function filterMap(type) {
+  currentFilter = type;
+  
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.remove('active');
+    btn.style.background = 'var(--bg3)';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color = 'var(--text)';
+  });
+  
+  const activeBtn = document.getElementById(`btn-filter-${type}`);
+  if (activeBtn) {
+    activeBtn.classList.add('active');
+    activeBtn.style.background = 'rgba(0, 212, 255, 0.05)';
+    activeBtn.style.borderColor = 'var(--accent)';
+    activeBtn.style.color = 'var(--accent)';
+  }
+  
+  renderMapMarkers();
+}
+
+function zoomToHotspot(coords, zoom) {
+  if (map) {
+    map.setView(coords, zoom, { animate: true, duration: 1.5 });
+  }
+}
+
 // ── REFRESH ALL ────────────────────────────────────────────────────────────
 async function refreshAll() {
   document.getElementById('last-refresh').textContent = 'Refreshing...';
@@ -970,6 +1275,7 @@ async function refreshAll() {
     loadVessels(),
     loadCassandra(),
     loadAnomalies(),
+    loadMapData(),
   ]);
   const now = new Date();
   document.getElementById('last-refresh').textContent =
@@ -977,8 +1283,177 @@ async function refreshAll() {
 }
 
 // Auto-refresh every 15 seconds
+initMap();
 setInterval(refreshAll, 15000);
 refreshAll();
+// ── INTERACTIVE VESSEL ACTIONS ─────────────────────────────────────────────
+function closeGraphModal() {
+  document.getElementById('graph-modal').style.display = 'none';
+}
+
+async function showVesselGraphPath(mmsi) {
+  const modal = document.getElementById('graph-modal');
+  modal.style.display = 'flex';
+  const contentEl = document.getElementById('graph-modal-content');
+  contentEl.innerHTML = `<div class="loading" style="text-align:center; padding:40px 0;">Accessing Neo4j Knowledge Graph...</div>`;
+  
+  const data = await fetchAPI(`/vessel-path/${mmsi}`);
+  if (data.error) {
+    contentEl.innerHTML = `<div class="error-msg">Failed to query Neo4j: ${data.error}</div>`;
+    return;
+  }
+
+  const sanctionStatus = data.sanctions.active 
+    ? `<div style="background:rgba(255,68,68,0.1); border:1px solid var(--red); padding:10px 14px; margin-bottom:14px; border-radius:2px;">
+         <div style="color:var(--red); font-weight:600; text-transform:uppercase; font-size:10px; margin-bottom:2px; display:flex; align-items:center; gap:6px;">
+           <span style="font-size:12px;">⚠</span> OFAC Sanction Event Node Active
+         </div>
+         <div style="font-size:11px; color:#fff;">Program: ${data.sanctions.program}</div>
+         <div style="font-size:9px; color:var(--muted)">Authority: ${data.sanctions.authority}</div>
+       </div>`
+    : `<div style="background:rgba(0,230,118,0.05); border:1px solid rgba(0,230,118,0.2); padding:8px 12px; margin-bottom:14px; font-size:10px; color:var(--green); display:flex; align-items:center; gap:6px; border-radius:2px;">
+         <span style="font-size:12px;">✓</span> No active sanctions registered in Neo4j
+       </div>`;
+
+  const reportStatus = data.report.active
+    ? `<div style="background:rgba(179,136,255,0.06); border:1px dashed var(--purple); padding:12px 14px; margin-bottom:20px; border-radius:2px;">
+         <div style="color:var(--purple); font-weight:600; text-transform:uppercase; font-size:9px; letter-spacing:0.05em; margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;">
+           <span>✦ LLM-Agent Operational Verdict</span>
+           <span>Conf: ${Math.round(data.report.confidence * 100)}%</span>
+         </div>
+         <div style="font-size:12px; font-weight:600; color:#fff; margin-bottom:4px;">${data.report.verdict}</div>
+         <div style="font-size:10px; color:var(--text); font-style:italic;">"${data.report.hypothesis}"</div>
+       </div>`
+    : ``;
+
+  contentEl.innerHTML = `
+    ${reportStatus}
+    
+    <div style="display:flex; flex-direction:column; align-items:center; gap:16px; margin: 10px 0;">
+      
+      <!-- Vessel Node -->
+      <div style="background:var(--bg3); border:2px solid var(--accent); padding:14px 20px; text-align:center; min-width:220px; box-shadow:0 0 15px rgba(0,212,255,0.15); border-radius:2px;">
+        <div style="font-size:9px; color:var(--accent); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:4px;">:Vessel</div>
+        <div style="font-size:14px; font-weight:600; color:#fff; margin-bottom:4px;">${data.name}</div>
+        <div style="font-size:10px; color:var(--muted); font-family:var(--font-mono);">MMSI: ${data.mmsi}</div>
+        <div style="font-size:10px; color:var(--muted); font-family:var(--font-mono);">IMO: ${data.imo}</div>
+      </div>
+      
+      <!-- Connectors -->
+      <div style="height:16px; width:1px; background:var(--border2); position:relative;">
+        <div style="position:absolute; bottom:0; left:-3px; border-left:4px solid transparent; border-right:4px solid transparent; border-top:4px solid var(--border2);"></div>
+      </div>
+      
+      <div style="display:flex; gap:24px; width:100%; justify-content:center;">
+        
+        <!-- Flag Node -->
+        <div style="flex:1; max-width:240px; background:var(--bg3); border:1px solid var(--green); padding:12px; text-align:center; border-radius:2px;">
+          <div style="font-size:8px; color:var(--green); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:4px;">:FlagState</div>
+          <div style="font-size:12px; font-weight:600; color:#fff; margin-bottom:2px;">${data.flag}</div>
+          <div style="font-size:9px; color:var(--muted);">Jurisdiction Relationship</div>
+        </div>
+        
+        <!-- Company Node -->
+        <div style="flex:1; max-width:240px; background:var(--bg3); border:1px solid ${data.sanctions.active ? 'var(--red)' : 'var(--border)'}; padding:12px; text-align:center; position:relative; border-radius:2px;">
+          <div style="font-size:8px; color:${data.sanctions.active ? 'var(--red)' : 'var(--muted)'}; font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:4px;">:Company</div>
+          <div style="font-size:12px; font-weight:600; color:#fff; margin-bottom:2px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${data.company.name}</div>
+          <div style="font-size:9px; color:var(--muted); font-family:var(--font-mono);">Corp IMO: ${data.company.imo}</div>
+        </div>
+
+      </div>
+      
+    </div>
+    
+    <div style="margin-top:20px; border-top:1px solid var(--border); padding-top:16px;">
+      ${sanctionStatus}
+    </div>
+  `;
+}
+
+async function showVesselTrack(mmsi) {
+  trackLayer.clearLayers();
+  
+  const res = await fetchAPI(`/vessel-tracks/${mmsi}`);
+  if (res.error || !res.tracks || res.tracks.length === 0) {
+    alert(`MMSI ${mmsi}: No historical tracks found.`);
+    return;
+  }
+  
+  // Show active track floating overlay
+  const overlay = document.getElementById('track-overlay');
+  overlay.style.display = 'flex';
+  document.getElementById('track-overlay-mmsi').textContent = mmsi;
+  document.getElementById('track-overlay-source').textContent = res.source;
+  
+  // Chronological sort
+  const tracks = [...res.tracks].reverse();
+  const latlngs = tracks.map(t => [t.lat, t.lon]);
+  
+  // Thick glowing outline line
+  L.polyline(latlngs, {
+    color: 'var(--accent)',
+    weight: 5,
+    opacity: 0.35
+  }).addTo(trackLayer);
+  
+  // Thin bright line
+  L.polyline(latlngs, {
+    color: '#ffffff',
+    weight: 2,
+    opacity: 0.95
+  }).addTo(trackLayer);
+  
+  // Waypoint markers
+  tracks.forEach((t, i) => {
+    const isLatest = i === tracks.length - 1;
+    const isFirst = i === 0;
+    
+    const color = isLatest ? 'var(--red)' : isFirst ? 'var(--green)' : 'var(--accent)';
+    const size = isLatest ? 6 : isFirst ? 5 : 3.5;
+    
+    const pt = L.circleMarker([t.lat, t.lon], {
+      radius: size,
+      color: color,
+      fillColor: '#ffffff',
+      fillOpacity: 1,
+      weight: 1.5
+    }).addTo(trackLayer);
+    
+    const dateStr = t.timestamp ? new Date(t.timestamp).toUTCString().replace(' GMT', '') : 'N/A';
+    pt.bindTooltip(`
+      <div style="font-family:var(--font-mono); font-size:9px; padding:2px; line-height:1.3;">
+        <strong style="color:var(--accent);">${isLatest ? 'LATEST POSITION' : isFirst ? 'START POSITION' : 'WAYPOINT ' + (i+1)}</strong><br>
+        Time: ${dateStr}<br>
+        Speed: ${parseFloat(t.speed || 0).toFixed(1)} kts
+      </div>
+    `, { sticky: true });
+  });
+  
+  // Fit map bounds
+  if (latlngs.length > 0) {
+    const bounds = L.latLngBounds(latlngs);
+    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+  }
+}
+
+function clearActiveTrack() {
+  trackLayer.clearLayers();
+  document.getElementById('track-overlay').style.display = 'none';
+}
 </script>
+
+<!-- Graph Modal Overlay Structure -->
+<div id="graph-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(8,12,16,0.8); backdrop-filter:blur(12px); align-items:center; justify-content:center; padding:20px;">
+  <div style="background:var(--bg2); border:1px solid var(--border); width:100%; max-width:650px; padding:24px; position:relative; box-shadow:0 20px 40px rgba(0,0,0,0.8); border-radius:4px;">
+    <!-- Header -->
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:18px;">
+      <span style="font-family:var(--font-mono); font-size:12px; color:var(--accent); font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">Vessel Corporate Parent Graph Path</span>
+      <button onclick="closeGraphModal()" style="background:transparent; border:none; color:var(--muted); font-size:16px; cursor:pointer; outline:none; transition:color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">×</button>
+    </div>
+    <!-- Content -->
+    <div id="graph-modal-content"></div>
+  </div>
+</div>
+
 </body>
 </html>

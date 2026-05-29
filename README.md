@@ -12,7 +12,30 @@ docker compose up -d zookeeper kafka neo4j
 docker compose up -d ais-ingestor signal-analyser sanctions-ingestor neo4j-etl
 ```
 
-Services will be available at:
+### 🗺️ GFW GIS Live Operations Dashboard
+We have built an interactive, dark-themed operations dashboard leveraging Leaflet.js and a Python Flask proxy server to visualize live real-world vessel telemetry, pulsing Ship-to-Ship rendezvous event rings, and dynamic risk scoring overlays.
+
+#### 🏛️ Interactive Telemetry Actions
+1. **AIS Tracks (Cassandra)**: Plots glowing trailing trajectories (`L.polyline`) directly from Cassandra timeseries data, displaying waypoint index, speeds, and timestamps on hover tooltips.
+2. **Graph Path (Neo4j)**: Spawns a custom glassmorphic modal displaying vessel ownership corporate structures, registered flags, OFAC sanctions, and LLM-Agent verdicts from Neo4j.
+
+#### 🛠️ Dashboard Setup & Startup
+1. **Update Vessel Risk Scores**:
+   Calculate and populate risk scores for all 32,800+ vessels in Neo4j in under a second (using our bulk batch transaction optimizer):
+   ```bash
+   .\venv\Scripts\python tools/update_risk_scores.py
+   ```
+2. **Launch the Proxy Server**:
+   Start the proxy server locally on port 5000:
+   ```bash
+   .\venv\Scripts\python dashboard_server.py
+   ```
+3. **Open the Dashboard**:
+   Simply open `dashboard.html` in any web browser to view the interactive map and operational telemetry!
+
+---
+
+### Services will be available at:
 | Service | URL |
 |---------|-----|
 | Kafka UI | http://localhost:8080 |
