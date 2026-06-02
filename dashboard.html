@@ -1084,12 +1084,12 @@ let allEventsData = [];
 let currentFilter = 'all';
 
 function initMap() {
-  if (map) return; // Prevent double init
+  if (map) return; 
   
   map = L.map('map', {
     zoomControl: true,
     attributionControl: true,
-    preferCanvas: true // Use HTML5 Canvas to render all 32,000+ points at 60 FPS
+    preferCanvas: true 
   }).setView([15.0, 75.0], 4);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -1102,8 +1102,10 @@ function initMap() {
   stsLayer.addTo(map);
   trackLayer.addTo(map);
   
-  // Custom zoom control placement to fit layout
   map.zoomControl.setPosition('topleft');
+
+  // Dynamically re-render the dots when the user zooms in or out
+  map.on('zoomend', renderMapMarkers);
 }
 
 async function loadMapData() {
@@ -1111,6 +1113,25 @@ async function loadMapData() {
     const data = await fetchAPI('/map-data');
     if (data && data.vessels) {
       allVesselsData = data.vessels;
+      
+      // Analyze data composition to update the UI Badge
+      const hasSynthetic = allVesselsData.some(v => v.name && v.name.startsWith('VESSEL_'));
+      const hasReal = allVesselsData.some(v => v.name && !v.name.startsWith('VESSEL_') && v.name !== 'UNKNOWN VESSEL');
+      
+      let modeText = "LIVE: AISSTREAM";
+      let modeColor = "var(--green)";
+      if (hasSynthetic && !hasReal) {
+          modeText = "LIVE: SYNTHETIC REPLAY";
+          modeColor = "var(--amber)";
+      } else if (hasSynthetic && hasReal) {
+          modeText = "LIVE: MIXED (REAL + SYNTH)";
+          modeColor = "var(--accent)";
+      }
+
+      const badgeEl = document.querySelector('.live-badge');
+      if (badgeEl) {
+          badgeEl.innerHTML = `<div class="live-dot" style="background:${modeColor}; box-shadow: 0 0 6px ${modeColor}"></div><span style="color:${modeColor}">${modeText}</span>`;
+      }
     }
   } catch (e) {
     console.error("Failed to load map vessels:", e);
@@ -1132,18 +1153,19 @@ function renderMapMarkers() {
   vesselLayer.clearLayers();
   stsLayer.clearLayers();
 
+  // Calculate dynamic radius based on current zoom level
+  const currentZoom = map.getZoom();
+  const baseRadius = currentZoom <= 4 ? 1.5 : currentZoom <= 6 ? 3 : currentZoom <= 8 ? 4 : 6;
+  const edgeWeight = currentZoom <= 4 ? 0.5 : 1.5;
+
   // Render Events
   if (currentFilter === 'all' || currentFilter === 'sts') {
     allEventsData.forEach(event => {
       if (event.lat && event.lon) {
         const isSts = event.type === 'STS_TRANSFER';
-        
-        // Hide if we only want to show STS rendezvous and this is not one
-        if (currentFilter === 'sts' && !isSts) {
-          return;
-        }
+        if (currentFilter === 'sts' && !isSts) return;
 
-        const color = isSts ? '#ff4444' : '#ffb300'; // Red for STS, Amber for general anomalies
+        const color = isSts ? '#ff4444' : '#ffb300'; 
         
         const stsCircle = L.circle([event.lat, event.lon], {
           color: color,
@@ -1151,12 +1173,11 @@ function renderMapMarkers() {
           fillOpacity: isSts ? 0.12 : 0.08,
           weight: 1.5,
           dashArray: isSts ? '3, 4' : '2, 3',
-          radius: isSts ? 12000 : 1500 // 12km for STS zones, 1.5km for point anomalies
+          radius: isSts ? 12000 : 1500 
         }).addTo(stsLayer);
 
         const confidencePct = event.confidence ? Math.round(event.confidence * 100) : 85;
         
-        // Dynamic title based on event type
         let eventTitle = '⚠ Operational Anomaly';
         if (event.type === 'STS_TRANSFER') eventTitle = '⚠ Ship-To-Ship Rendezvous';
         else if (event.type === 'SPEED_ANOMALY' || event.type === 'M-SPEED-ANOMALY') eventTitle = '⚠ Speed Anomaly';
@@ -1178,6 +1199,59 @@ function renderMapMarkers() {
       }
     });
   }
+
+  // Render Vessel Markers with dynamic sizing
+  if (currentFilter === 'all' || currentFilter === 'high') {
+    allVesselsData.forEach(v => {
+      if (v.lat && v.lon) {
+        const score = parseInt(v.risk_score || 0);
+        if (currentFilter === 'high' && score < 80) return;
+
+        let color = '#00e676'; 
+        if (score >= 80) color = '#ff4444'; 
+        else if (score >= 50) color = '#ffb300'; 
+
+        const marker = L.circleMarker([v.lat, v.lon], {
+          radius: score >= 80 ? baseRadius + 1 : baseRadius, // High risk slightly larger
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.85,
+          weight: edgeWeight,
+          stroke: true
+        }).addTo(vesselLayer);
+
+        const popupContent = `
+          <div style="font-family:var(--font-mono); color:var(--text); min-width:180px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span style="font-weight:600; color:#fff; font-size:11px;">${v.name || 'UNKNOWN VESSEL'}</span>
+              <span style="background:rgba(0,212,255,0.08); border:1px solid rgba(0,212,255,0.2); padding:1px 4px; font-size:8px; color:var(--accent); text-transform:uppercase;">${v.vessel_type || 'cargo'}</span>
+            </div>
+            <div style="border-bottom:1px solid var(--border); padding-bottom:6px; margin-bottom:6px; font-size:8px; color:var(--muted)">MMSI: ${v.mmsi} · IMO: ${v.imo || '—'}</div>
+            <table style="width:100%; border-collapse:collapse; font-size:10px; margin-bottom:8px;">
+              <tr>
+                <td style="color:var(--muted); padding:2px 0;">Speed:</td>
+                <td style="text-align:right; font-weight:600; color:#fff;">${parseFloat(v.speed || 0).toFixed(1)} kts</td>
+              </tr>
+              <tr>
+                <td style="color:var(--muted); padding:2px 0;">Position:</td>
+                <td style="text-align:right; color:#fff;">${parseFloat(v.lat).toFixed(4)}, ${parseFloat(v.lon).toFixed(4)}</td>
+              </tr>
+              <tr>
+                <td style="color:var(--muted); padding:2px 0;">Risk Score:</td>
+                <td style="text-align:right; font-weight:600; color:${color};">${score}%</td>
+              </tr>
+            </table>
+            <div style="border-top:1px solid var(--border); padding-top:6px; display:flex; justify-content:space-between; gap:4px;">
+              <button onclick="showVesselGraphPath('${v.mmsi}')" style="flex:1; font-family:var(--font-mono); font-size:8px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:3px 4px; cursor:pointer; text-transform:uppercase; text-align:center; outline:none;">Graph Path</button>
+              <button onclick="showVesselTrack('${v.mmsi}')" style="flex:1; font-family:var(--font-mono); font-size:8px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:3px 4px; cursor:pointer; text-transform:uppercase; text-align:center; outline:none;">AIS Tracks</button>
+            </div>
+          </div>
+        `;
+        marker.bindPopup(popupContent);
+      }
+    });
+  }
+}
 
   // Render Vessel Markers
   if (currentFilter === 'all' || currentFilter === 'high') {
@@ -1236,7 +1310,6 @@ function renderMapMarkers() {
       }
     });
   }
-}
 
 function filterMap(type) {
   currentFilter = type;

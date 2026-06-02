@@ -211,12 +211,14 @@ def build_anomaly_event(detection: dict, source_envelope: dict) -> dict:
 # ── MAIN LOOP ─────────────────────────────────────────────────────────────────
 def run():
     eez_zones = []
-    for attempt in range(5):
+    # Increased to 20 attempts, waiting 10 seconds each (over 3 minutes total)
+    for attempt in range(20):
         eez_zones = load_eez_zones()
         if eez_zones:
+            log.info("Successfully loaded EEZ zones!")
             break
-        log.warning("Waiting for Neo4j EEZ data... (attempt %d/5)", attempt + 1)
-        time.sleep(5)
+        log.warning("Waiting for Neo4j to boot so we can fetch EEZ data... (attempt %d/20)", attempt + 1)
+        time.sleep(10)
         
     consumer = Consumer({
         "bootstrap.servers": KAFKA_BOOTSTRAP,
