@@ -333,7 +333,7 @@ services:
       CASSANDRA_PORT: "9042"
       CASSANDRA_KEYSPACE: maf_ais
       HISTORY_TTL_DAYS: "90"
-      BATCH_SIZE: "200"
+      BATCH_SIZE: "20"
     restart: unless-stopped
 
   # ── FASTAPI OUTPUT ────────────────────────────────────────────────────────

@@ -190,33 +190,45 @@ def api_topics():
 @app.route("/api/anomalies")
 def api_anomalies():
     try:
-        from confluent_kafka import Consumer, KafkaError
+        from confluent_kafka import Consumer, KafkaError, TopicPartition
         consumer = Consumer({
             "bootstrap.servers": KAFKA_BOOTSTRAP,
             "group.id": "maf-dashboard-anomalies",
             "auto.offset.reset": "earliest",
             "enable.auto.commit": False,
+            "enable.partition.eof": False,
         })
-        consumer.subscribe(["ais.anomalies"])
+        
+        # Direct partition assignment (bypasses consumer group rebalancing lag)
+        meta = consumer.list_topics("ais.anomalies", timeout=5.0)
+        topic_meta = meta.topics.get("ais.anomalies")
+        if topic_meta:
+            partitions = [TopicPartition("ais.anomalies", p) for p in topic_meta.partitions.keys()]
+            for tp in partitions:
+                tp.offset = -2  # OFFSET_BEGINNING
+            consumer.assign(partitions)
         events = []
         deadline = time.time() + 3.0
         while time.time() < deadline and len(events) < 50:
-            msg = consumer.poll(timeout=0.5)
-            if msg is None:
-                break
-            if msg.error():
-                if msg.error().code() != -191:  # not EOF
-                    break
-                break
             try:
+                msg = consumer.poll(timeout=0.1)
+                if msg is None:
+                    continue
+                if msg.error():
+                    continue
                 events.append(json.loads(msg.value().decode()))
             except Exception:
-                pass
-        consumer.close()
+                continue
+        try:
+            consumer.close()
+        except Exception:
+            pass
         events.sort(key=lambda e: e.get("detected_at", ""), reverse=True)
         return jsonify({"events": events[:20]})
     except Exception as e:
-        return jsonify({"error": str(e), "events": []}), 200
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"{str(e)}: {traceback.format_exc()}", "events": []}), 200
 
 
 # ── CASSANDRA ─────────────────────────────────────────────────────────────────

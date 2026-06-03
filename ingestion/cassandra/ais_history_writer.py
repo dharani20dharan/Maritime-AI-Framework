@@ -24,7 +24,7 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
 from cassandra.cluster import Cluster, ExecutionProfile, EXEC_PROFILE_DEFAULT
-from cassandra.policies import DCAwareRoundRobinPolicy, RetryPolicy
+from cassandra.policies import RoundRobinPolicy, RetryPolicy
 from cassandra.query import BatchStatement, PreparedStatement, ConsistencyLevel
 from confluent_kafka import Consumer, KafkaError
 
@@ -50,7 +50,7 @@ FLUSH_INTERVAL_S = 5.0   # max seconds between flushes regardless of batch size
 def connect_cassandra():
     """Connect with retry — Cassandra takes ~60s to start."""
     profile = ExecutionProfile(
-        load_balancing_policy=DCAwareRoundRobinPolicy(local_dc="dc1"),
+        load_balancing_policy=RoundRobinPolicy(),
         retry_policy=RetryPolicy(),
         consistency_level=ConsistencyLevel.LOCAL_ONE,
     )
@@ -61,6 +61,7 @@ def connect_cassandra():
                 port=CASSANDRA_PORT,
                 execution_profiles={EXEC_PROFILE_DEFAULT: profile},
                 connect_timeout=15,
+                protocol_version=4,
             )
             session = cluster.connect(KEYSPACE)
             log.info("Connected to Cassandra at %s:%d / keyspace=%s",
@@ -144,13 +145,32 @@ class DarkEventTracker:
 
 # ── MAIN LOOP ─────────────────────────────────────────────────────────────────
 
+def parse_timestamp(ts: str) -> datetime:
+    if not ts:
+        return datetime.now(timezone.utc)
+    try:
+        ts_clean = ts.replace(" +0000 UTC", "+00:00").replace(" Z", "+00:00").replace("Z", "+00:00")
+        if "." in ts_clean:
+            base, frac = ts_clean.split(".", 1)
+            tz_part = ""
+            for sep in ("+", "-"):
+                if sep in frac:
+                    parts = frac.split(sep, 1)
+                    frac = parts[0]
+                    tz_part = sep + parts[1]
+                    break
+            ts_clean = f"{base}.{frac[:6]}{tz_part}"
+        return datetime.fromisoformat(ts_clean)
+    except Exception:
+        try:
+            return datetime.strptime(ts[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        except Exception:
+            return datetime.now(timezone.utc)
+
 def date_bucket(ts_iso: str) -> str:
     """Extract YYYY-MM-DD date bucket from ISO timestamp string."""
-    try:
-        dt = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
-        return dt.strftime("%Y-%m-%d")
-    except Exception:
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    dt = parse_timestamp(ts_iso)
+    return dt.strftime("%Y-%m-%d")
 
 
 def run():
@@ -229,7 +249,7 @@ def run():
                     batch_count += 1
                 continue
 
-            ts_dt = datetime.fromisoformat(ts.replace("Z", "+00:00")) if ts else datetime.now(timezone.utc)
+            ts_dt = parse_timestamp(ts)
             bucket = date_bucket(ts)
 
             # Position row (with 90-day TTL)
