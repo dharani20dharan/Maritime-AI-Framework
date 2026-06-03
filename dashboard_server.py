@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+import datetime
 
 from flask import Flask, jsonify
 from flask_cors import CORS
@@ -25,10 +25,10 @@ app = Flask(__name__)
 CORS(app)
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-NEO4J_URI      = os.getenv("NEO4J_URI",      "bolt://127.0.0.1:7687")
-NEO4J_USER     = os.getenv("NEO4J_USER",     "neo4j")
+NEO4J_URI = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "maf_neo4j_2024")
-KAFKA_BOOTSTRAP= os.getenv("KAFKA_BOOTSTRAP","127.0.0.1:29092")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "127.0.0.1:29092")
 CASSANDRA_HOST = os.getenv("CASSANDRA_HOST", "127.0.0.1")
 CASSANDRA_PORT = int(os.getenv("CASSANDRA_PORT", "9042"))
 
@@ -170,8 +170,6 @@ def api_topics():
             # Get end offsets (approximate message count)
             total = 0
             try:
-                committed = consumer.committed(tps, timeout=3)
-                end_offs  = consumer.get_watermark_offsets
                 for tp in tps:
                     lo, hi = consumer.get_watermark_offsets(tp, timeout=2)
                     total += max(0, hi)
@@ -190,7 +188,7 @@ def api_topics():
 @app.route("/api/anomalies")
 def api_anomalies():
     try:
-        from confluent_kafka import Consumer, KafkaError, TopicPartition
+        from confluent_kafka import Consumer, TopicPartition
         consumer = Consumer({
             "bootstrap.servers": KAFKA_BOOTSTRAP,
             "group.id": "maf-dashboard-anomalies",
@@ -239,7 +237,7 @@ def api_cassandra():
     1. Direct driver connection to 127.0.0.1:9042 (works if WSL2 port forwarding is active)
     2. Fallback: docker exec into the cassandra container and run cqlsh
     """
-    import subprocess, json as _json
+    import subprocess
 
     def _via_docker_exec():
         """Run cqlsh inside the container — works regardless of port forwarding."""
@@ -281,7 +279,7 @@ def api_cassandra():
             load_balancing_policy=RoundRobinPolicy(),
         )
         session = cluster.connect()
-        keyspaces = [r.keyspace_name for r in
+        keyspaces = [r[0] for r in
                      session.execute("SELECT keyspace_name FROM system_schema.keyspaces")]
         if "maf_ais" not in keyspaces:
             cluster.shutdown()
@@ -350,7 +348,6 @@ def api_services():
 
     def cassandra_check():
         try:
-            import socket
             # Force IPv4 socket probe
             s = socket.create_connection(("127.0.0.1", CASSANDRA_PORT), timeout=2)
             s.close()
@@ -436,8 +433,6 @@ def api_vessel_path(mmsi):
 
 @app.route("/api/vessel-tracks/<mmsi>")
 def api_vessel_tracks(mmsi):
-    import datetime
-    
     # Try direct driver first
     try:
         from cassandra.cluster import Cluster
