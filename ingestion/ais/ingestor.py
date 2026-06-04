@@ -58,7 +58,7 @@ def build_envelope(raw: dict, source: str = "AIS_LIVE") -> dict | None:
     meta      = raw.get("MetaData", {})
     msg       = raw.get("Message", {})
 
-    if msg_type == "PositionReport":
+    if msg_type in ("PositionReport", "StandardClassBPositionReport"):
         pos = msg.get("PositionReport", {})
         return {
             "mmsi":      str(meta.get("MMSI", "")),
@@ -109,7 +109,7 @@ def validate(envelope: dict) -> tuple[bool, str]:
             return False, f"lat_out_of_range:{envelope['lat']}"
         if not (-180 <= envelope["lon"] <= 180):
             return False, f"lon_out_of_range:{envelope['lon']}"
-        if envelope.get("speed_kts", 0) > 102.2:   # AIS physical max
+        if envelope.get("speed_kts", 0) > 102.3:   # AIS physical max
             return False, f"speed_impossible:{envelope['speed_kts']}"
     return True, "ok"
 
@@ -122,7 +122,7 @@ async def consume_live(producer: Producer):
     subscription = {
         "APIKey": AISSTREAM_API_KEY,
         "BoundingBoxes": [[[-90, -180], [90, 180]]],  # global
-        "FilterMessageTypes": ["PositionReport", "ShipStaticData"],
+        "FilterMessageTypes": ["PositionReport", "StandardClassBPositionReport", "ShipStaticData"],
     }
 
     import ssl

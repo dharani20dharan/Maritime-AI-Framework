@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAF — Geospatial OSINT Dashboard</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        mono: ['"IBM Plex Mono"', 'monospace'],
+                        display: ['"Share Tech Mono"', 'monospace'],
+                    },
+                    colors: {
+                        maf: {
+                            bg:      '#060a0f',
+                            panel:   '#0b1118',
+                            card:    '#101820',
+                            border:  '#1a2535',
+                            accent:  '#00e5ff',
+                            green:   '#00ff88',
+                            alert:   '#ff3b3b',
+                            warn:    '#ffc107',
+                            dim:     '#4a6080',
+                            text:    '#b8c8d8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * { box-sizing: border-box; }
+        body { background: #060a0f; color: #b8c8d8; overflow: hidden; font-family: 'IBM Plex Mono', monospace; }
+
+        /* Map */
+        .leaflet-container { background: #060a0f; }
+        .leaflet-popup-content-wrapper {
+            background: #101820; color: #b8c8d8;
+            border: 1px solid #1a2535; border-radius: 2px; padding: 0;
+            box-shadow: 0 0 20px rgba(0,229,255,0.15);
+        }
+        .leaflet-popup-tip { background: #101820; }
+        .leaflet-popup-content { margin: 0; }
+        .leaflet-control-zoom a {
+            background: #0b1118 !important; color: #00e5ff !important;
+            border-color: #1a2535 !important;
+        }
+        .leaflet-control-zoom a:hover { background: #1a2535 !important; }
+
+        /* Markers */
+        .m-normal {
+            background: #00e5ff; border-radius: 50%;
+            border: 1.5px solid rgba(255,255,255,0.6);
+            box-shadow: 0 0 8px rgba(0,229,255,0.7), 0 0 2px rgba(0,229,255,1);
+        }
+        .m-anomaly {
+            background: #ff3b3b; border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.8);
+            box-shadow: 0 0 0 0 rgba(255,59,59,0.7);
+            animation: pulse-red 1.4s infinite;
+        }
+        .m-dark {
+            background: #ffc107; border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.6);
+            box-shadow: 0 0 8px rgba(255,193,7,0.8);
+            animation: pulse-warn 2s infinite;
+        }
+        .m-selected {
+            border: 2px solid #00ff88 !important;
+            box-shadow: 0 0 14px rgba(0,255,136,0.9) !important;
+            z-index: 9999 !important;
+        }
+        @keyframes pulse-red {
+            0%   { box-shadow: 0 0 0 0 rgba(255,59,59,0.8); }
+            70%  { box-shadow: 0 0 0 8px rgba(255,59,59,0); }
+            100% { box-shadow: 0 0 0 0 rgba(255,59,59,0); }
+        }
+        @keyframes pulse-warn {
+            0%   { box-shadow: 0 0 0 0 rgba(255,193,7,0.8); }
+            70%  { box-shadow: 0 0 0 6px rgba(255,193,7,0); }
+            100% { box-shadow: 0 0 0 0 rgba(255,193,7,0); }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #1a2535; border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: #00e5ff44; }
+
+        /* Sidebar */
+        .sidebar { width: 300px; min-width: 300px; }
+
+        /* Range input */
+        input[type=range] { accent-color: #00e5ff; }
+
+        /* Filter section */
+        .filter-section { border-left: 2px solid #1a2535; padding-left: 10px; margin-bottom: 10px; }
+        .filter-section.active { border-left-color: #00e5ff; }
+
+        /* Detail panel */
+        #detail-panel {
+            transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s ease;
+        }
+        #detail-panel.hidden-panel {
+            transform: translateY(100%); opacity: 0; pointer-events: none;
+        }
+
+        /* Toast */
+        .toast {
+            background: #101820; border: 1px solid #00e5ff33;
+            font-size: 11px; padding: 6px 14px; border-radius: 2px;
+            color: #00e5ff; transition: opacity 0.3s;
+        }
+
+        /* Scan line overlay for atmosphere */
+        #map::after {
+            content: '';
+            position: absolute; inset: 0;
+            background: repeating-linear-gradient(
+                0deg, transparent, transparent 2px,
+                rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+            );
+            pointer-events: none; z-index: 400;
+        }
+
+        /* Track legend */
+        .track-legend {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 10px; color: #4a6080;
+        }
+        .track-line { width: 24px; height: 2px; background: #00ff88; }
+        .track-line.dashed {
+            background: repeating-linear-gradient(90deg, #00e5ff 0, #00e5ff 4px, transparent 4px, transparent 8px);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col">
+
+<!-- ── HEADER ───────────────────────────────────────────────────────────────── -->
+<header class="h-12 bg-maf-panel border-b border-maf-border flex items-center justify-between px-5 shrink-0 z-20 relative">
+    <div class="flex items-center gap-3">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <polygon points="9,1 17,17 1,17" stroke="#00e5ff" stroke-width="1.5" fill="none"/>
+            <circle cx="9" cy="12" r="1.5" fill="#00e5ff"/>
+        </svg>
+        <span class="font-display text-xs tracking-widest text-white">MAF GEOSPATIAL · OSINT</span>
+        <span class="text-maf-dim text-xs">|</span>
+        <span id="vessel-count" class="font-mono text-[10px] text-maf-dim">0 VESSELS TRACKED</span>
+    </div>
+    <div class="flex items-center gap-4 text-[10px] font-mono">
+        <span id="conn-status" class="flex items-center gap-1.5 text-maf-warn">
+            <span class="w-1.5 h-1.5 rounded-full bg-maf-warn animate-pulse"></span>
+            CONNECTING…
+        </span>
+        <span class="text-maf-dim">|</span>
+        <span id="clock" class="text-maf-text">--:--:-- UTC</span>
+    </div>
+</header>
+
+<!-- ── BODY ─────────────────────────────────────────────────────────────────── -->
+<div class="flex flex-1 overflow-hidden">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar bg-maf-panel border-r border-maf-border flex flex-col z-20 overflow-hidden">
+
+        <!-- Search -->
+        <div class="p-3 border-b border-maf-border shrink-0">
+            <input id="search-input" type="text" placeholder="Search MMSI / Vessel Name…"
+                class="w-full bg-maf-bg border border-maf-border text-white text-[11px] font-mono px-3 py-1.5 rounded-none focus:outline-none focus:border-maf-accent transition-colors placeholder-maf-dim">
+        </div>
+
+        <!-- Filters -->
+        <div class="p-3 border-b border-maf-border shrink-0 space-y-3">
+            <div class="text-[9px] text-maf-dim uppercase tracking-widest mb-2">Filters</div>
+
+            <!-- Anomaly type checkboxes -->
+            <div class="filter-section" id="fs-anomaly">
+                <div class="text-[9px] text-maf-dim mb-1.5">Anomaly Types</div>
+                <div class="space-y-1">
+                    <label class="flex items-center gap-2 text-[11px] cursor-pointer hover:text-white">
+                        <input type="checkbox" id="f-speed" checked class="accent-red-500"> Speed Anomaly
+                    </label>
+                    <label class="flex items-center gap-2 text-[11px] cursor-pointer hover:text-white">
+                        <input type="checkbox" id="f-dark" checked class="accent-yellow-400"> Dark Event / AIS Gap
+                    </label>
+                    <label class="flex items-center gap-2 text-[11px] cursor-pointer hover:text-white">
+                        <input type="checkbox" id="f-eez" checked class="accent-cyan-400"> EEZ Violation
+                    </label>
+                    <label class="flex items-center gap-2 text-[11px] cursor-pointer hover:text-white">
+                        <input type="checkbox" id="f-sanction" checked class="accent-red-500"> Sanctioned Vessel
+                    </label>
+                    <label class="flex items-center gap-2 text-[11px] cursor-pointer hover:text-white">
+                        <input type="checkbox" id="f-other" checked class="accent-cyan-400"> Other / Beacon
+                    </label>
+                </div>
+            </div>
+
+            <!-- Flag filter -->
+            <div class="filter-section" id="fs-flag">
+                <div class="text-[9px] text-maf-dim mb-1.5">Flag State</div>
+                <select id="f-flag" class="w-full bg-maf-bg border border-maf-border text-[11px] text-maf-text font-mono px-2 py-1 focus:outline-none focus:border-maf-accent">
+                    <option value="">All Flags</option>
+                    <option>IR</option><option>KP</option><option>PA</option>
+                    <option>MH</option><option>LR</option><option>CN</option>
+                    <option>RU</option><option>US</option><option>IN</option>
+                </select>
+            </div>
+
+            <!-- Speed filter -->
+            <div class="filter-section" id="fs-speed">
+                <div class="flex justify-between text-[9px] text-maf-dim mb-1">
+                    <span>Min Speed</span>
+                    <span id="speed-val" class="text-maf-accent">0 kts</span>
+                </div>
+                <input type="range" id="f-speed-min" min="0" max="40" value="0" class="w-full h-1">
+                <div class="flex justify-between text-[9px] text-maf-dim mt-1">
+                    <span>Max Speed</span>
+                    <span id="speed-max-val" class="text-maf-accent">99 kts</span>
+                </div>
+                <input type="range" id="f-speed-max" min="0" max="99" value="99" class="w-full h-1 mt-1">
+            </div>
+
+            <!-- Anomaly only toggle -->
+            <label class="flex items-center gap-2 text-[11px] cursor-pointer hover:text-white">
+                <input type="checkbox" id="f-anom-only" class="accent-cyan-400">
+                <span>Show Anomalies Only</span>
+            </label>
+
+            <button onclick="resetFilters()"
+                class="w-full text-[9px] font-mono uppercase tracking-widest text-maf-dim border border-maf-border py-1 hover:border-maf-accent hover:text-maf-accent transition-colors">
+                Reset Filters
+            </button>
+        </div>
+
+        <!-- Track controls (shown when vessel selected) -->
+        <div id="track-controls" class="hidden p-3 border-b border-maf-border bg-maf-bg/50 shrink-0">
+            <div class="text-[9px] text-maf-dim mb-2 uppercase tracking-widest">Track History</div>
+            <div class="flex items-center gap-2 mb-2">
+                <label class="text-[10px] text-maf-dim whitespace-nowrap">Days:</label>
+                <input type="range" id="track-days" min="1" max="90" value="7" class="flex-1 h-1">
+                <span id="track-days-val" class="text-[10px] text-maf-accent w-8">7d</span>
+            </div>
+            <button id="load-track-btn" onclick="loadVesselHistory()"
+                class="w-full text-[10px] font-mono uppercase tracking-widest border border-maf-accent text-maf-accent py-1.5 hover:bg-maf-accent hover:text-maf-bg transition-colors">
+                ▶ Load Track
+            </button>
+            <button onclick="clearTrack()"
+                class="w-full mt-1 text-[10px] font-mono uppercase tracking-widest border border-maf-border text-maf-dim py-1 hover:border-maf-text transition-colors">
+                ✕ Clear Track
+            </button>
+            <div id="track-legend" class="hidden mt-2 space-y-1">
+                <div class="track-legend"><div class="track-line"></div> Live position</div>
+                <div class="track-legend"><div class="track-line dashed"></div> Historical path</div>
+            </div>
+        </div>
+
+        <!-- Active Alerts list -->
+        <div class="flex-1 overflow-y-auto p-3">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-[9px] text-maf-dim uppercase tracking-widest">Active Alerts</span>
+                <span id="alert-count" class="text-[10px] font-mono text-maf-alert font-bold">0</span>
+            </div>
+            <div id="anomaly-list" class="space-y-2"></div>
+        </div>
+    </aside>
+
+    <!-- MAP -->
+    <main class="flex-1 relative" id="map"></main>
+
+
+    <!-- RIGHT PANEL: Pipeline Status + Knowledge Graph -->
+    <aside id="right-panel" class="w-72 min-w-[288px] bg-maf-panel border-l border-maf-border flex flex-col z-20 overflow-y-auto">
+
+        <!-- API connection warning banner -->
+        <div id="api-warn" class="hidden px-3 py-2 bg-maf-alert/10 border-b border-maf-alert/40 text-[10px] text-maf-alert font-mono">
+            <span class="font-bold">⚠ Cannot reach proxy server</span><br>
+            Make sure dashboard_server.py is running:<br>
+            <span class="text-maf-dim">python dashboard_server.py</span>
+        </div>
+
+        <!-- Pipeline / Container Status -->
+        <div class="p-3 border-b border-maf-border shrink-0">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-[9px] text-maf-dim uppercase tracking-widest">Pipeline Status</span>
+                <span id="svc-refresh" class="text-[9px] text-maf-dim cursor-pointer hover:text-maf-accent" onclick="fetchServices()">↺ refresh</span>
+            </div>
+            <div id="services-grid" class="grid grid-cols-2 gap-1.5">
+                <!-- populated by JS -->
+            </div>
+        </div>
+
+        <!-- Knowledge Graph Stats -->
+        <div class="p-3 border-b border-maf-border shrink-0">
+            <div class="text-[9px] text-maf-dim uppercase tracking-widest mb-2">Knowledge Graph · Neo4j</div>
+            <div id="neo4j-stats" class="space-y-1">
+                <!-- populated by JS -->
+            </div>
+        </div>
+
+        <!-- Kafka Topics -->
+        <div class="p-3 border-b border-maf-border shrink-0">
+            <div class="text-[9px] text-maf-dim uppercase tracking-widest mb-2">Kafka Topics</div>
+            <div id="kafka-stats" class="space-y-1">
+                <!-- populated by JS -->
+            </div>
+            <!-- ETL anomaly reset button — shown when Event count = 0 but ais.anomalies > 0 -->
+            <div id="etl-reset-banner" class="hidden mt-2 p-2 bg-maf-warn/10 border border-maf-warn/40">
+                <div class="text-[9px] text-maf-warn mb-1.5">317 anomalies in Kafka but 0 Event nodes in Neo4j.<br>ETL may have consumed them before the crash-loop fix.</div>
+                <button onclick="resetEtlOffsets()"
+                    class="w-full text-[9px] font-mono uppercase tracking-widest border border-maf-warn text-maf-warn py-1 hover:bg-maf-warn hover:text-maf-bg transition-colors">
+                    ⟳ Reset ETL Offsets + Restart
+                </button>
+            </div>
+        </div>
+
+        <!-- Recent Neo4j Events -->
+        <div class="flex-1 p-3 overflow-y-auto">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-[9px] text-maf-dim uppercase tracking-widest">Recent Graph Events</span>
+                <span id="graph-event-count" class="text-[10px] font-mono text-maf-accent">0</span>
+            </div>
+            <div id="graph-events-list" class="space-y-1.5">
+                <!-- populated by JS -->
+            </div>
+        </div>
+    </aside>
+
+    <!-- VESSEL DETAIL PANEL -->
+    <div id="detail-panel" class="hidden-panel absolute bottom-0 left-[300px] right-0 z-30
+         bg-maf-panel border-t border-maf-border shadow-2xl">
+        <div class="flex items-start justify-between p-4">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                    <span id="det-flag" class="text-[9px] font-mono px-1.5 py-0.5 bg-maf-bg border border-maf-border text-maf-accent">--</span>
+                    <h2 id="det-name" class="text-base font-display text-white truncate">VESSEL NAME</h2>
+                    <span id="det-anomaly-badge" class="hidden text-[9px] font-mono px-2 py-0.5 bg-maf-alert/20 border border-maf-alert text-maf-alert">ANOMALY</span>
+                </div>
+                <div class="text-[10px] text-maf-dim font-mono">
+                    MMSI: <span id="det-mmsi" class="text-maf-text cursor-pointer hover:text-maf-accent" title="Click to copy">---</span>
+                    &nbsp;|&nbsp; IMO: <span id="det-imo" class="text-maf-text">---</span>
+                </div>
+            </div>
+            <button onclick="closeDetails()" class="text-maf-dim hover:text-white ml-4 text-lg leading-none">✕</button>
+        </div>
+        <div class="grid grid-cols-5 gap-0 border-t border-maf-border">
+            <div class="p-3 border-r border-maf-border">
+                <div class="text-[9px] text-maf-dim uppercase tracking-wider mb-0.5">Speed</div>
+                <div class="text-sm text-white font-mono"><span id="det-speed">0.0</span> <span class="text-[9px] text-maf-dim">kts</span></div>
+            </div>
+            <div class="p-3 border-r border-maf-border">
+                <div class="text-[9px] text-maf-dim uppercase tracking-wider mb-0.5">Heading</div>
+                <div class="text-sm text-white font-mono"><span id="det-heading">0</span>°</div>
+            </div>
+            <div class="p-3 border-r border-maf-border">
+                <div class="text-[9px] text-maf-dim uppercase tracking-wider mb-0.5">Draft</div>
+                <div class="text-sm text-white font-mono"><span id="det-draft">--</span> <span class="text-[9px] text-maf-dim">m</span></div>
+            </div>
+            <div class="p-3 border-r border-maf-border">
+                <div class="text-[9px] text-maf-dim uppercase tracking-wider mb-0.5">Position</div>
+                <div class="text-[10px] text-white font-mono"><span id="det-lat">--</span>, <span id="det-lon">--</span></div>
+            </div>
+            <div class="p-3">
+                <div class="text-[9px] text-maf-dim uppercase tracking-wider mb-0.5">Last Seen</div>
+                <div class="text-[10px] text-white font-mono" id="det-time">--</div>
+            </div>
+        </div>
+        <div id="det-anomaly-detail" class="hidden px-4 py-2 bg-maf-alert/10 border-t border-maf-alert/30 text-[10px] text-maf-alert font-mono"></div>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast-container" class="absolute top-14 right-4 z-50 flex flex-col gap-1.5 pointer-events-none"></div>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────────
+const API = 'http://localhost:5000/api';
+let map, markersLayer, historyLayer;
+let allVessels = [], allAnomalies = [];
+let selectedMmsi = null;
+let markerRefs = {};   // mmsi → leaflet marker
+
+// ── INIT ───────────────────────────────────────────────────────────────────────
+function init() {
+    initMap();
+    initClock();
+    setupListeners();
+    fetchAll();
+    setInterval(fetchAll, 15000);
+    setInterval(fetchServices, 30000);
+    setInterval(() => { fetchNeo4j(); fetchKafka(); fetchGraphEvents(); }, 30000);
+}
+
+function initMap() {
+    map = L.map('map', { zoomControl: false }).setView([15, 60], 4);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // CartoDB Dark Matter
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
+    }).addTo(map);
+
+    markersLayer = L.layerGroup().addTo(map);
+    historyLayer = L.layerGroup().addTo(map);
+}
+
+function initClock() {
+    setInterval(() => {
+        const now = new Date();
+        document.getElementById('clock').textContent =
+            now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    }, 1000);
+}
+
+function setupListeners() {
+    document.getElementById('search-input').addEventListener('input', renderMap);
+    ['f-speed','f-dark','f-eez','f-sanction','f-other','f-anom-only'].forEach(id => {
+        document.getElementById(id).addEventListener('change', renderMap);
+    });
+    document.getElementById('f-flag').addEventListener('change', renderMap);
+    document.getElementById('f-speed-min').addEventListener('input', e => {
+        document.getElementById('speed-val').textContent = e.target.value + ' kts';
+        renderMap();
+    });
+    document.getElementById('f-speed-max').addEventListener('input', e => {
+        document.getElementById('speed-max-val').textContent = e.target.value + ' kts';
+        renderMap();
+    });
+    document.getElementById('track-days').addEventListener('input', e => {
+        document.getElementById('track-days-val').textContent = e.target.value + 'd';
+    });
+}
+
+function resetFilters() {
+    ['f-speed','f-dark','f-eez','f-sanction','f-other'].forEach(id =>
+        document.getElementById(id).checked = true);
+    document.getElementById('f-anom-only').checked = false;
+    document.getElementById('f-flag').value = '';
+    document.getElementById('f-speed-min').value = 0;
+    document.getElementById('f-speed-max').value = 99;
+    document.getElementById('speed-val').textContent = '0 kts';
+    document.getElementById('speed-max-val').textContent = '99 kts';
+    renderMap();
+}
+
+// ── DATA ───────────────────────────────────────────────────────────────────────
+async function safeGet(path) {
+    try {
+        const r = await fetch(`${API}${path}`);
+        if (!r.ok) return null;
+        return await r.json();
+    } catch(e) {
+        return null;
+    }
+}
+
+async function fetchAll() {
+    const [vRes, aRes] = await Promise.all([
+        safeGet('/vessels'),
+        safeGet('/anomalies'),
+    ]);
+
+    const apiOk = vRes !== null;
+    document.getElementById('api-warn').classList.toggle('hidden', apiOk);
+
+    if (apiOk && !vRes.error) {
+        allVessels   = (vRes.vessels || []).filter(v => v.lat != null && v.lon != null);
+        allAnomalies = (aRes && aRes.events) || [];
+        setStatus('connected', `LIVE · ${allVessels.length} vessels`);
+        document.getElementById('vessel-count').textContent = allVessels.length + ' VESSELS TRACKED';
+    } else {
+        if (allVessels.length === 0) injectMockData();
+        setStatus('mock', 'MOCK DATA — API offline');
+    }
+    renderMap();
+
+    // Fire panel fetches independently — don't block map render
+    fetchServices();
+    fetchNeo4j();
+    fetchKafka();
+    fetchGraphEvents();
+}
+
+async function fetchServices() {
+    const data = await safeGet('/services');
+    const grid = document.getElementById('services-grid');
+    if (!data) {
+        grid.innerHTML = '<div class="col-span-2 text-[9px] text-maf-alert">Cannot reach dashboard_server.py</div>';
+        return;
+    }
+    const labels = {
+        zookeeper:'ZooKeeper', kafka:'Kafka', neo4j:'Neo4j',
+        cassandra:'Cassandra', ingestor:'AIS Ingestor', signal:'Signal Analyser',
+        sanctions:'Sanctions', history:'History Writer', etl:'Neo4j ETL',
+    };
+    const statusColor = {
+        healthy:'text-maf-green', running:'text-maf-green',
+        starting:'text-maf-warn', error:'text-maf-alert', unknown:'text-maf-dim'
+    };
+    grid.innerHTML = Object.entries(labels).map(([key, label]) => {
+        const st  = data[key] || 'unknown';
+        const col = statusColor[st] || 'text-maf-dim';
+        const dot = st === 'healthy' || st === 'running' ? '●' : st === 'starting' ? '◐' : '○';
+        return `<div class="flex items-center gap-1.5 text-[10px]">
+            <span class="${col}">${dot}</span>
+            <span class="text-maf-text truncate">${label}</span>
+        </div>`;
+    }).join('');
+}
+
+async function fetchNeo4j() {
+    const data = await safeGet('/neo4j');
+    const el = document.getElementById('neo4j-stats');
+    if (!data || data.error) {
+        el.innerHTML = `<div class="text-[9px] text-maf-alert">${data?.error || 'Neo4j unreachable'}</div>`;
+        return;
+    }
+    const rows = [
+        ['Vessels',   data.vessels,   'text-maf-accent'],
+        ['Flags',     data.flags,     'text-maf-text'],
+        ['EEZ Zones', data.eez_zones, 'text-maf-text'],
+        ['Sanctioned',data.sanctioned,'text-maf-alert'],
+        ['Events',    data.anomalies, data.anomalies > 0 ? 'text-maf-green' : 'text-maf-warn'],
+    ];
+    el.innerHTML = rows.map(([label, val, col]) =>
+        `<div class="flex justify-between text-[10px]">
+            <span class="text-maf-dim">${label}</span>
+            <span class="${col} font-mono font-bold">${val ?? '—'}</span>
+        </div>`
+    ).join('');
+    // Store for ETL reset logic
+    el._eventCount = data.anomalies;
+    checkEtlResetNeeded();
+}
+
+async function fetchKafka() {
+    const data = await safeGet('/topics');
+    const el = document.getElementById('kafka-stats');
+    if (!data || data.error) {
+        el.innerHTML = `<div class="text-[9px] text-maf-alert">${data?.error || 'Kafka unreachable'}</div>`;
+        return;
+    }
+    const topics = {
+        ais_raw:       'ais.raw',
+        ais_validated: 'ais.validated',
+        ais_anomalies: 'ais.anomalies',
+    };
+    el.innerHTML = Object.entries(topics).map(([key, label]) => {
+        const count = data[key]?.message_count ?? 0;
+        const col   = key === 'ais_anomalies' && count > 0 ? 'text-maf-alert' : 'text-maf-accent';
+        return `<div class="flex justify-between text-[10px]">
+            <span class="text-maf-dim font-mono">${label}</span>
+            <span class="${col} font-mono font-bold">${count.toLocaleString()}</span>
+        </div>`;
+    }).join('');
+    // Store anomaly count for ETL reset logic
+    el._anomalyCount = data.ais_anomalies?.message_count || 0;
+    checkEtlResetNeeded();
+}
+
+function checkEtlResetNeeded() {
+    const kafkaEl   = document.getElementById('kafka-stats');
+    const neo4jEl   = document.getElementById('neo4j-stats');
+    const banner    = document.getElementById('etl-reset-banner');
+    const kafkaAnom = kafkaEl._anomalyCount || 0;
+    const graphEvts = neo4jEl._eventCount   || 0;
+    // Show reset button if there are Kafka anomalies but 0 graph events
+    banner.classList.toggle('hidden', !(kafkaAnom > 0 && graphEvts === 0));
+}
+
+async function fetchGraphEvents() {
+    const data = await safeGet('/neo4j_events');
+    const el   = document.getElementById('graph-events-list');
+    const countEl = document.getElementById('graph-event-count');
+    if (!data || data.error) {
+        el.innerHTML = `<div class="text-[9px] text-maf-dim">${data?.error || 'No events'}</div>`;
+        return;
+    }
+    countEl.textContent = data.count || 0;
+    if (!data.events || data.events.length === 0) {
+        el.innerHTML = '<div class="text-[9px] text-maf-dim">No Event nodes in Neo4j yet.<br>ETL must be running and consuming ais.anomalies.</div>';
+        return;
+    }
+    const typeColor = {
+        AIS_GAP:'text-maf-warn', BEACON_PATTERN:'text-maf-alert',
+        SPEED_ANOMALY:'text-maf-alert', EEZ_VIOLATION:'text-maf-accent',
+        STS_TRANSFER:'text-maf-warn', FLAG_HOP:'text-maf-alert',
+    };
+    el.innerHTML = data.events.map(e => {
+        const col = typeColor[e.event_type] || 'text-maf-text';
+        const ts  = e.start_time ? e.start_time.slice(0,16).replace('T',' ') : '—';
+        return `<div class="p-2 bg-maf-bg border border-maf-border hover:border-maf-accent/40 cursor-pointer transition-colors"
+                     onclick="jumpToVessel('${e.mmsi}')">
+            <div class="flex justify-between mb-0.5">
+                <span class="text-[9px] ${col} font-mono">${e.event_type}</span>
+                <span class="text-[9px] text-maf-dim">${e.flag||'??'}</span>
+            </div>
+            <div class="text-[10px] text-white truncate">${e.name || e.mmsi}</div>
+            <div class="text-[9px] text-maf-dim">${ts}</div>
+        </div>`;
+    }).join('');
+}
+
+async function resetEtlOffsets() {
+    showToast('Resetting ETL offsets on ais.anomalies…');
+    try {
+        const r = await fetch(`${API}/etl_reset_anomalies`, { method: 'POST' });
+        const d = await r.json();
+        if (d.error) {
+            showToast('Reset failed: ' + d.error);
+        } else {
+            showToast('Offsets reset. Restarting ETL container…');
+            // Give user the next step clearly
+            setTimeout(() => showToast('Run: docker restart maf-neo4j-etl'), 2000);
+        }
+    } catch(e) {
+        showToast('Reset error: ' + e.message);
+    }
+}
+
+function jumpToVessel(mmsi) {
+    const ref = markerRefs[mmsi];
+    if (ref) {
+        map.flyTo(ref.marker.getLatLng(), 9);
+        openDetails(ref.vessel, null);
+    } else {
+        showToast(`Vessel ${mmsi} not on map — may not have live position`);
+    }
+}
+
+function setStatus(state, text) {
+    const el = document.getElementById('conn-status');
+    const colors = { connected: 'text-maf-green', mock: 'text-maf-warn', error: 'text-maf-alert' };
+    const dotColors = { connected: 'bg-maf-green', mock: 'bg-maf-warn', error: 'bg-maf-alert' };
+    el.className = `flex items-center gap-1.5 ${colors[state]}`;
+    el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${dotColors[state]} animate-pulse"></span>${text}`;
+}
+
+function injectMockData() {
+    const flags = ['LR','PA','MH','US','IN','CN','IR','KP','RU'];
+    for (let i = 0; i < 250; i++) {
+        allVessels.push({
+            mmsi: `4${String(i).padStart(8,'0')}`,
+            imo: `9${Math.floor(Math.random()*900000+100000)}`,
+            name: `VESSEL_${i.toString().padStart(3,'0')}`,
+            flag: flags[i % flags.length],
+            speed_kts: +(Math.random() * 22).toFixed(1),
+            heading: Math.floor(Math.random() * 360),
+            draught_m: +(Math.random() * 15 + 2).toFixed(1),
+            lat: (Math.random() * 100) - 20,
+            lon: (Math.random() * 320) - 60,
+            last_seen: new Date(Date.now() - Math.random()*3600000).toISOString(),
+        });
+    }
+    const techniques = [
+        { t:'M-SPEED-ANOMALY', d:'SOG=65kts exceeds realistic max for vessel type' },
+        { t:'M-EEZ-VIOLATION', d:'Unauthorised entry into Indian EEZ (flag: PA)' },
+        { t:'M-DARK-EVENT',    d:'Vessel ceased AIS transmission for 14.5h in high-risk corridor' },
+        { t:'M-AIS-BEACON',    d:'Stationary AIS beacon pattern detected (CV<0.01)' },
+        { t:'SANCTIONED_ZONE', d:'Vessel operating in UN-sanctioned exclusion zone' },
+    ];
+    [10, 27, 55, 88, 120].forEach((idx, i) => {
+        const v = allVessels[idx];
+        const tech = techniques[i % techniques.length];
+        allAnomalies.push({
+            mmsi: v.mmsi, vessel_name: v.name,
+            technique: tech.t, detail: tech.d,
+            lat: v.lat, lon: v.lon,
+        });
+    });
+    document.getElementById('vessel-count').textContent = allVessels.length + ' VESSELS TRACKED';
+}
+
+// ── RENDER MAP ─────────────────────────────────────────────────────────────────
+function renderMap() {
+    const search    = document.getElementById('search-input').value.toLowerCase();
+    const anomOnly  = document.getElementById('f-anom-only').checked;
+    const fFlag     = document.getElementById('f-flag').value;
+    const speedMin  = +document.getElementById('f-speed-min').value;
+    const speedMax  = +document.getElementById('f-speed-max').value;
+    const fSpeed    = document.getElementById('f-speed').checked;
+    const fDark     = document.getElementById('f-dark').checked;
+    const fEez      = document.getElementById('f-eez').checked;
+    const fSanction = document.getElementById('f-sanction').checked;
+    const fOther    = document.getElementById('f-other').checked;
+
+    markersLayer.clearLayers();
+    markerRefs = {};
+
+    const anomMap = {};
+    allAnomalies.forEach(a => anomMap[a.mmsi] = a);
+
+    const anomalyListEl = document.getElementById('anomaly-list');
+    anomalyListEl.innerHTML = '';
+    let alertCount = 0;
+
+    const techniqueEnabled = (t) => {
+        if (!t) return fOther;
+        if (t.includes('SPEED'))    return fSpeed;
+        if (t.includes('DARK') || t.includes('GAP')) return fDark;
+        if (t.includes('EEZ'))      return fEez;
+        if (t.includes('SANCTION')) return fSanction;
+        return fOther;
+    };
+
+    allVessels.forEach(v => {
+        const isAnom = !!anomMap[v.mmsi];
+        const anom   = anomMap[v.mmsi];
+
+        // Anomaly type filter
+        if (isAnom && !techniqueEnabled(anom.technique)) return;
+
+        // Core filters
+        if (anomOnly && !isAnom) return;
+        if (fFlag && v.flag !== fFlag) return;
+        const spd = parseFloat(v.speed_kts || 0);
+        if (spd < speedMin || spd > speedMax) return;
+        if (search && !v.mmsi.includes(search) && !(v.name||'').toLowerCase().includes(search)) return;
+
+        // Marker style
+        const isDark = isAnom && (anom.technique||'').includes('DARK');
+        const cls    = isAnom ? (isDark ? 'm-dark' : 'm-anomaly') : 'm-normal';
+        const sz     = isAnom ? 10 : 6;
+        const isSelected = v.mmsi === selectedMmsi;
+
+        const icon = L.divIcon({
+            className: `${cls}${isSelected ? ' m-selected' : ''}`,
+            iconSize:  [sz, sz],
+            iconAnchor:[sz/2, sz/2],
+        });
+
+        const marker = L.marker([v.lat, v.lon], {
+            icon,
+            zIndexOffset: isAnom ? 1000 : 0,
+        }).addTo(markersLayer);
+
+        marker.on('click', () => openDetails(v, anom));
+        markerRefs[v.mmsi] = { marker, vessel: v };
+
+        // Sidebar anomaly cards
+        if (isAnom) {
+            alertCount++;
+            const color = isDark ? 'maf-warn' : 'maf-alert';
+            const card = document.createElement('div');
+            card.className = `p-2.5 bg-maf-bg border border-${color}/40 cursor-pointer hover:border-${color} transition-colors`;
+            card.onclick = () => { map.flyTo([v.lat, v.lon], 9); openDetails(v, anom); };
+            card.innerHTML = `
+                <div class="flex justify-between mb-0.5">
+                    <span class="text-[9px] text-${color} font-mono tracking-wider">${anom.technique||'UNKNOWN'}</span>
+                    <span class="text-[9px] text-maf-dim">${v.flag||'??'}</span>
+                </div>
+                <div class="text-[11px] text-white truncate font-mono">${v.name||v.mmsi}</div>
+                <div class="text-[9px] text-maf-dim mt-0.5 leading-tight line-clamp-2">${anom.detail||''}</div>`;
+            anomalyListEl.appendChild(card);
+        }
+    });
+
+    document.getElementById('alert-count').textContent = alertCount;
+}
+
+// ── DETAIL PANEL ───────────────────────────────────────────────────────────────
+function openDetails(v, anom) {
+    selectedMmsi = v.mmsi;
+
+    document.getElementById('det-name').textContent  = v.name || 'UNKNOWN';
+    document.getElementById('det-mmsi').textContent  = v.mmsi;
+    document.getElementById('det-imo').textContent   = v.imo || '---';
+    document.getElementById('det-flag').textContent  = v.flag || '??';
+    document.getElementById('det-speed').textContent = parseFloat(v.speed_kts||0).toFixed(1);
+    document.getElementById('det-heading').textContent = v.heading||'---';
+    document.getElementById('det-draft').textContent = v.draught_m||'---';
+    document.getElementById('det-lat').textContent   = v.lat != null ? (+v.lat).toFixed(4) : '--';
+    document.getElementById('det-lon').textContent   = v.lon != null ? (+v.lon).toFixed(4) : '--';
+    document.getElementById('det-time').textContent  = v.last_seen ? v.last_seen.replace('T',' ').slice(0,19) : '--';
+
+    const badge  = document.getElementById('det-anomaly-badge');
+    const detail = document.getElementById('det-anomaly-detail');
+    if (anom) {
+        badge.classList.remove('hidden');
+        detail.classList.remove('hidden');
+        detail.textContent = `[${anom.technique}] ${anom.detail}`;
+    } else {
+        badge.classList.add('hidden');
+        detail.classList.add('hidden');
+    }
+
+    // MMSI copy
+    document.getElementById('det-mmsi').onclick = () => {
+        navigator.clipboard.writeText(v.mmsi).catch(() => {});
+        showToast('MMSI copied');
+    };
+
+    // Slide panel up
+    document.getElementById('detail-panel').classList.remove('hidden-panel');
+
+    // Show track controls
+    document.getElementById('track-controls').classList.remove('hidden');
+
+    // Re-render to update selected marker glow
+    renderMap();
+}
+
+function closeDetails() {
+    document.getElementById('detail-panel').classList.add('hidden-panel');
+    document.getElementById('track-controls').classList.add('hidden');
+    clearTrack();
+    selectedMmsi = null;
+    renderMap();
+}
+
+// ── VESSEL TRACK ───────────────────────────────────────────────────────────────
+async function loadVesselHistory() {
+    if (!selectedMmsi) return;
+    const days = document.getElementById('track-days').value;
+    const btn  = document.getElementById('load-track-btn');
+
+    btn.textContent = '⏳ Fetching…';
+    btn.disabled = true;
+    showToast(`Querying Cassandra — ${days}d track for ${selectedMmsi}…`);
+    historyLayer.clearLayers();
+
+    try {
+        const res  = await fetch(`${API}/history?mmsi=${encodeURIComponent(selectedMmsi)}&days=${days}`);
+        const data = await res.json();
+
+        if (data.error) throw new Error(data.error);
+
+        const points = (data.points || []).filter(p => p.lat != null && p.lon != null);
+
+        if (points.length === 0) {
+            showToast(`No history found for ${selectedMmsi} in last ${days}d`);
+        } else {
+            // Draw historical track as dashed cyan line
+            const latlngs = points.map(p => [p.lat, p.lon]);
+            L.polyline(latlngs, {
+                color: '#00e5ff', weight: 2,
+                opacity: 0.65, dashArray: '6 5'
+            }).addTo(historyLayer);
+
+            // Mark oldest position
+            const first = points[0];
+            L.circleMarker([first.lat, first.lon], {
+                radius: 5, color: '#00e5ff', fillColor: '#0b1118', fillOpacity: 1, weight: 2
+            }).bindTooltip('Track start', { className: 'leaflet-tooltip' })
+              .addTo(historyLayer);
+
+            // Waypoint dots at speed changes
+            points.forEach((p, i) => {
+                if (i > 0 && i < points.length - 1 && i % 20 === 0) {
+                    L.circleMarker([p.lat, p.lon], {
+                        radius: 2, color: '#00e5ff99', fillColor: '#00e5ff', fillOpacity: 0.6, weight: 1
+                    }).addTo(historyLayer);
+                }
+            });
+
+            // Fit map to track
+            map.fitBounds(L.polyline(latlngs).getBounds(), { padding: [60, 60] });
+            showToast(`Track loaded — ${points.length} positions over ${days}d (${data.source})`);
+            document.getElementById('track-legend').classList.remove('hidden');
+        }
+    } catch (e) {
+        showToast(`Track error: ${e.message}`);
+    } finally {
+        btn.textContent = '▶ Load Track';
+        btn.disabled = false;
+    }
+}
+
+function clearTrack() {
+    historyLayer.clearLayers();
+    document.getElementById('track-legend').classList.add('hidden');
+}
+
+// ── UTILITIES ──────────────────────────────────────────────────────────────────
+function showToast(msg) {
+    const c = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = 'toast opacity-0';
+    t.textContent = msg;
+    c.appendChild(t);
+    requestAnimationFrame(() => t.classList.remove('opacity-0'));
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => c.removeChild(t), 300); }, 3500);
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
