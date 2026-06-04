@@ -274,74 +274,35 @@
     </aside>
 
     <!-- MAP -->
-    <main class="flex-1 relative" id="map"></main>
-
-
-    <!-- RIGHT PANEL: Pipeline Status + Knowledge Graph -->
-    <aside id="right-panel" class="w-72 min-w-[288px] bg-maf-panel border-l border-maf-border flex flex-col z-20 overflow-y-auto">
-
+    <main class="flex-1 relative" id="map">
         <!-- API connection warning banner -->
-        <div id="api-warn" class="hidden px-3 py-2 bg-maf-alert/10 border-b border-maf-alert/40 text-[10px] text-maf-alert font-mono">
-            <span class="font-bold">⚠ Cannot reach proxy server</span><br>
-            Make sure dashboard_server.py is running:<br>
-            <span class="text-maf-dim">python dashboard_server.py</span>
+        <div id="api-warn" class="hidden absolute top-2 left-1/2 -translate-x-1/2 z-50 px-3 py-2 bg-maf-alert/10 border border-maf-alert/40 text-[10px] text-maf-alert font-mono rounded">
+            <span class="font-bold">⚠ Cannot reach proxy server</span> — Make sure dashboard_server.py is running
         </div>
+    </main>
 
-        <!-- Pipeline / Container Status -->
-        <div class="p-3 border-b border-maf-border shrink-0">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-[9px] text-maf-dim uppercase tracking-widest">Pipeline Status</span>
-                <span id="svc-refresh" class="text-[9px] text-maf-dim cursor-pointer hover:text-maf-accent" onclick="fetchServices()">↺ refresh</span>
-            </div>
-            <div id="services-grid" class="grid grid-cols-2 gap-1.5">
-                <!-- populated by JS -->
-            </div>
-        </div>
+    <!-- Hidden stubs so JS references to removed panel elements don't throw -->
+    <div class="hidden" aria-hidden="true">
+        <div id="services-grid"></div>
+        <div id="neo4j-stats"></div>
+        <div id="kafka-stats"></div>
+        <div id="etl-reset-banner"></div>
+        <div id="graph-events-list"></div>
+        <div id="graph-event-count"></div>
+    </div>
 
-        <!-- Knowledge Graph Stats -->
-        <div class="p-3 border-b border-maf-border shrink-0">
-            <div class="text-[9px] text-maf-dim uppercase tracking-widest mb-2">Knowledge Graph · Neo4j</div>
-            <div id="neo4j-stats" class="space-y-1">
-                <!-- populated by JS -->
-            </div>
-        </div>
-
-        <!-- Kafka Topics -->
-        <div class="p-3 border-b border-maf-border shrink-0">
-            <div class="text-[9px] text-maf-dim uppercase tracking-widest mb-2">Kafka Topics</div>
-            <div id="kafka-stats" class="space-y-1">
-                <!-- populated by JS -->
-            </div>
-            <!-- ETL anomaly reset button — shown when Event count = 0 but ais.anomalies > 0 -->
-            <div id="etl-reset-banner" class="hidden mt-2 p-2 bg-maf-warn/10 border border-maf-warn/40">
-                <div class="text-[9px] text-maf-warn mb-1.5">317 anomalies in Kafka but 0 Event nodes in Neo4j.<br>ETL may have consumed them before the crash-loop fix.</div>
-                <button onclick="resetEtlOffsets()"
-                    class="w-full text-[9px] font-mono uppercase tracking-widest border border-maf-warn text-maf-warn py-1 hover:bg-maf-warn hover:text-maf-bg transition-colors">
-                    ⟳ Reset ETL Offsets + Restart
-                </button>
-            </div>
-        </div>
-
-        <!-- Recent Neo4j Events -->
-        <div class="flex-1 p-3 overflow-y-auto">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-[9px] text-maf-dim uppercase tracking-widest">Recent Graph Events</span>
-                <span id="graph-event-count" class="text-[10px] font-mono text-maf-accent">0</span>
-            </div>
-            <div id="graph-events-list" class="space-y-1.5">
-                <!-- populated by JS -->
-            </div>
-        </div>
-    </aside>
 
     <!-- VESSEL DETAIL PANEL -->
-    <div id="detail-panel" class="hidden-panel absolute bottom-0 left-[300px] right-0 z-30
-         bg-maf-panel border-t border-maf-border shadow-2xl">
-        <div class="flex items-start justify-between p-4">
+    <div id="detail-panel" class="hidden-panel absolute bottom-0 left-[300px] right-0
+         bg-maf-panel border-t border-maf-border shadow-2xl" style="z-index:1000">
+
+        <!-- Header row: identity + Neo4j button -->
+        <div class="flex items-start justify-between px-4 pt-3 pb-2">
             <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-0.5">
+                <div class="flex items-center gap-2 mb-0.5 flex-wrap">
                     <span id="det-flag" class="text-[9px] font-mono px-1.5 py-0.5 bg-maf-bg border border-maf-border text-maf-accent">--</span>
                     <h2 id="det-name" class="text-base font-display text-white truncate">VESSEL NAME</h2>
+                    <span id="det-vessel-type-badge" class="text-[9px] font-mono px-1.5 py-0.5 bg-maf-bg border border-maf-dim/40 text-maf-dim">--</span>
                     <span id="det-anomaly-badge" class="hidden text-[9px] font-mono px-2 py-0.5 bg-maf-alert/20 border border-maf-alert text-maf-alert">ANOMALY</span>
                 </div>
                 <div class="text-[10px] text-maf-dim font-mono">
@@ -349,8 +310,16 @@
                     &nbsp;|&nbsp; IMO: <span id="det-imo" class="text-maf-text">---</span>
                 </div>
             </div>
-            <button onclick="closeDetails()" class="text-maf-dim hover:text-white ml-4 text-lg leading-none">✕</button>
+            <div class="flex items-center gap-2 ml-4 shrink-0">
+                <button id="neo4j-query-btn" onclick="fetchVesselIntel()"
+                    class="text-[9px] font-mono uppercase tracking-widest border border-maf-accent/60 text-maf-accent px-3 py-1.5 hover:bg-maf-accent hover:text-maf-bg transition-colors whitespace-nowrap">
+                    ⬡ Query Neo4j
+                </button>
+                <button onclick="closeDetails()" class="text-maf-dim hover:text-white text-lg leading-none">✕</button>
+            </div>
         </div>
+
+        <!-- Stat grid -->
         <div class="grid grid-cols-5 gap-0 border-t border-maf-border">
             <div class="p-3 border-r border-maf-border">
                 <div class="text-[9px] text-maf-dim uppercase tracking-wider mb-0.5">Speed</div>
@@ -373,7 +342,20 @@
                 <div class="text-[10px] text-white font-mono" id="det-time">--</div>
             </div>
         </div>
+
+        <!-- Anomaly strip -->
         <div id="det-anomaly-detail" class="hidden px-4 py-2 bg-maf-alert/10 border-t border-maf-alert/30 text-[10px] text-maf-alert font-mono"></div>
+
+        <!-- Neo4j intel panel (hidden until queried) -->
+        <div id="neo4j-intel" class="hidden border-t border-maf-border bg-maf-bg/60">
+            <div class="flex items-center justify-between px-4 py-2 border-b border-maf-border/50">
+                <span class="text-[9px] text-maf-dim uppercase tracking-widest">Neo4j Intelligence</span>
+                <span id="neo4j-intel-status" class="text-[9px] font-mono text-maf-dim"></span>
+            </div>
+            <div id="neo4j-intel-body" class="px-4 py-3 grid grid-cols-3 gap-4 text-[10px] font-mono">
+                <!-- populated by fetchVesselIntel() -->
+            </div>
+        </div>
     </div>
 
     <!-- TOAST -->
@@ -464,7 +446,7 @@ async function safeGet(path) {
 
 async function fetchAll() {
     const [vRes, aRes] = await Promise.all([
-        safeGet('/vessels'),
+        safeGet('/map-data'),
         safeGet('/anomalies'),
     ]);
 
@@ -766,6 +748,27 @@ function renderMap() {
     document.getElementById('alert-count').textContent = alertCount;
 }
 
+// ── AIS VESSEL TYPE LOOKUP ─────────────────────────────────────────────────────
+const VESSEL_TYPES = {
+    0:'Unknown', 20:'WIG', 21:'WIG Hazcat A', 22:'WIG Hazcat B', 23:'WIG Hazcat C', 24:'WIG Hazcat D',
+    29:'WIG Other', 30:'Fishing', 31:'Towing', 32:'Towing (long)', 33:'Dredging', 34:'Diving Ops',
+    35:'Military', 36:'Sailing', 37:'Pleasure Craft', 40:'HSC', 41:'HSC Hazcat A',
+    42:'HSC Hazcat B', 43:'HSC Hazcat C', 44:'HSC Hazcat D', 49:'HSC Other',
+    50:'Pilot Vessel', 51:'SAR', 52:'Tug', 53:'Port Tender', 54:'Anti-Pollution',
+    55:'Law Enforcement', 58:'Medical', 59:'Non-combatant', 60:'Passenger',
+    61:'Passenger Hazcat A', 62:'Passenger Hazcat B', 63:'Passenger Hazcat C',
+    64:'Passenger Hazcat D', 69:'Passenger Other', 70:'Cargo', 71:'Cargo Hazcat A',
+    72:'Cargo Hazcat B', 73:'Cargo Hazcat C', 74:'Cargo Hazcat D', 79:'Cargo Other',
+    80:'Tanker', 81:'Tanker Hazcat A', 82:'Tanker Hazcat B', 83:'Tanker Hazcat C',
+    84:'Tanker Hazcat D', 89:'Tanker Other', 90:'Other', 91:'Other Hazcat A',
+    92:'Other Hazcat B', 93:'Other Hazcat C', 94:'Other Hazcat D', 99:'Other NOS',
+};
+function vesselTypeLabel(code) {
+    if (code == null || code === '' || code === 0) return null;
+    const n = parseInt(code);
+    return VESSEL_TYPES[n] || `Type ${n}`;
+}
+
 // ── DETAIL PANEL ───────────────────────────────────────────────────────────────
 function openDetails(v, anom) {
     selectedMmsi = v.mmsi;
@@ -774,12 +777,22 @@ function openDetails(v, anom) {
     document.getElementById('det-mmsi').textContent  = v.mmsi;
     document.getElementById('det-imo').textContent   = v.imo || '---';
     document.getElementById('det-flag').textContent  = v.flag || '??';
-    document.getElementById('det-speed').textContent = parseFloat(v.speed_kts||0).toFixed(1);
-    document.getElementById('det-heading').textContent = v.heading||'---';
-    document.getElementById('det-draft').textContent = v.draught_m||'---';
+    document.getElementById('det-speed').textContent = parseFloat(v.speed_kts || v.speed || 0).toFixed(1);
+    document.getElementById('det-heading').textContent = v.heading || '---';
+    document.getElementById('det-draft').textContent = v.draught_m || '---';
     document.getElementById('det-lat').textContent   = v.lat != null ? (+v.lat).toFixed(4) : '--';
     document.getElementById('det-lon').textContent   = v.lon != null ? (+v.lon).toFixed(4) : '--';
     document.getElementById('det-time').textContent  = v.last_seen ? v.last_seen.replace('T',' ').slice(0,19) : '--';
+
+    // Vessel type badge
+    const typeBadge = document.getElementById('det-vessel-type-badge');
+    const typeLabel = vesselTypeLabel(v.vessel_type);
+    if (typeLabel) {
+        typeBadge.textContent = typeLabel.toUpperCase();
+        typeBadge.classList.remove('hidden');
+    } else {
+        typeBadge.classList.add('hidden');
+    }
 
     const badge  = document.getElementById('det-anomaly-badge');
     const detail = document.getElementById('det-anomaly-detail');
@@ -798,6 +811,13 @@ function openDetails(v, anom) {
         showToast('MMSI copied');
     };
 
+    // Reset Neo4j intel panel on new selection
+    document.getElementById('neo4j-intel').classList.add('hidden');
+    document.getElementById('neo4j-intel-body').innerHTML = '';
+    document.getElementById('neo4j-intel-status').textContent = '';
+    document.getElementById('neo4j-query-btn').disabled = false;
+    document.getElementById('neo4j-query-btn').textContent = '⬡ Query Neo4j';
+
     // Slide panel up
     document.getElementById('detail-panel').classList.remove('hidden-panel');
 
@@ -811,9 +831,120 @@ function openDetails(v, anom) {
 function closeDetails() {
     document.getElementById('detail-panel').classList.add('hidden-panel');
     document.getElementById('track-controls').classList.add('hidden');
+    document.getElementById('neo4j-intel').classList.add('hidden');
     clearTrack();
     selectedMmsi = null;
     renderMap();
+}
+
+// ── NEO4J VESSEL INTEL ─────────────────────────────────────────────────────────
+async function fetchVesselIntel() {
+    if (!selectedMmsi) return;
+    const btn    = document.getElementById('neo4j-query-btn');
+    const panel  = document.getElementById('neo4j-intel');
+    const body   = document.getElementById('neo4j-intel-body');
+    const status = document.getElementById('neo4j-intel-status');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Querying…';
+    panel.classList.remove('hidden');
+    body.innerHTML = '<div class="col-span-3 text-maf-dim text-[10px] py-1">Querying Neo4j…</div>';
+
+    try {
+        const res  = await fetch(`${API}/vessel-path/${encodeURIComponent(selectedMmsi)}`);
+        const data = await res.json();
+
+        if (data.error) {
+            body.innerHTML = `<div class="col-span-3 text-maf-alert text-[10px]">Neo4j: ${data.error}</div>`;
+            status.textContent = 'NOT FOUND';
+            btn.textContent = '⬡ Query Neo4j';
+            btn.disabled = false;
+            return;
+        }
+
+        const sanctionColor = data.sanctions?.active ? 'text-maf-alert' : 'text-maf-green';
+        const sanctionDot   = data.sanctions?.active ? '● ACTIVE' : '○ NONE';
+
+        body.innerHTML = `
+            <!-- Identity -->
+            <div>
+                <div class="text-[9px] text-maf-dim uppercase tracking-widest mb-1.5">Identity</div>
+                <div class="space-y-1">
+                    <div class="flex justify-between gap-2">
+                        <span class="text-maf-dim">Name</span>
+                        <span class="text-white truncate">${data.name || '—'}</span>
+                    </div>
+                    <div class="flex justify-between gap-2">
+                        <span class="text-maf-dim">IMO</span>
+                        <span class="text-maf-text">${data.imo || '—'}</span>
+                    </div>
+                    <div class="flex justify-between gap-2">
+                        <span class="text-maf-dim">Flag</span>
+                        <span class="text-maf-accent">${data.flag || '—'}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ownership -->
+            <div>
+                <div class="text-[9px] text-maf-dim uppercase tracking-widest mb-1.5">Ownership</div>
+                <div class="space-y-1">
+                    <div class="flex justify-between gap-2">
+                        <span class="text-maf-dim">Operator</span>
+                        <span class="text-white truncate">${data.company?.name || '—'}</span>
+                    </div>
+                    <div class="flex justify-between gap-2">
+                        <span class="text-maf-dim">Company IMO</span>
+                        <span class="text-maf-text">${data.company?.imo || '—'}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sanctions -->
+            <div>
+                <div class="text-[9px] text-maf-dim uppercase tracking-widest mb-1.5">Sanctions</div>
+                <div class="space-y-1">
+                    <div class="flex justify-between gap-2">
+                        <span class="text-maf-dim">Status</span>
+                        <span class="font-bold ${sanctionColor}">${sanctionDot}</span>
+                    </div>
+                    <div class="flex justify-between gap-2">
+                        <span class="text-maf-dim">Program</span>
+                        <span class="${data.sanctions?.active ? 'text-maf-alert' : 'text-maf-dim'}">${data.sanctions?.program || '—'}</span>
+                    </div>
+                    <div class="flex justify-between gap-2">
+                        <span class="text-maf-dim">Authority</span>
+                        <span class="text-maf-text">${data.sanctions?.authority || '—'}</span>
+                    </div>
+                </div>
+            </div>
+
+            ${data.report?.active ? `
+            <!-- Intelligence Report -->
+            <div class="col-span-3 mt-1 pt-2 border-t border-maf-border/50">
+                <div class="text-[9px] text-maf-dim uppercase tracking-widest mb-1.5">Intelligence Assessment</div>
+                <div class="flex gap-6">
+                    <div class="flex justify-between gap-2">
+                        <span class="text-maf-dim">Verdict</span>
+                        <span class="text-maf-warn ml-2">${data.report.verdict}</span>
+                    </div>
+                    <div class="flex justify-between gap-2">
+                        <span class="text-maf-dim">Confidence</span>
+                        <span class="text-maf-text ml-2">${data.report.confidence}%</span>
+                    </div>
+                    <div class="flex-1 text-maf-dim truncate">${data.report.hypothesis}</div>
+                </div>
+            </div>` : ''}
+        `;
+
+        status.textContent = data.sanctions?.active ? '⚠ SANCTIONED' : 'CLEAN';
+        status.className   = `text-[9px] font-mono font-bold ${data.sanctions?.active ? 'text-maf-alert' : 'text-maf-green'}`;
+        btn.textContent = '✓ Loaded';
+    } catch (e) {
+        body.innerHTML = `<div class="col-span-3 text-maf-alert text-[10px]">Error: ${e.message}</div>`;
+        btn.textContent = '⬡ Query Neo4j';
+        btn.disabled = false;
+    }
 }
 
 // ── VESSEL TRACK ───────────────────────────────────────────────────────────────
@@ -828,12 +959,12 @@ async function loadVesselHistory() {
     historyLayer.clearLayers();
 
     try {
-        const res  = await fetch(`${API}/history?mmsi=${encodeURIComponent(selectedMmsi)}&days=${days}`);
+        const res  = await fetch(`${API}/vessel-tracks/${encodeURIComponent(selectedMmsi)}`);
         const data = await res.json();
 
         if (data.error) throw new Error(data.error);
 
-        const points = (data.points || []).filter(p => p.lat != null && p.lon != null);
+        const points = (data.tracks || []).filter(p => p.lat != null && p.lon != null);
 
         if (points.length === 0) {
             showToast(`No history found for ${selectedMmsi} in last ${days}d`);

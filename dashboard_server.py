@@ -104,6 +104,8 @@ def api_map_data():
                        v.last_lat AS lat, v.last_lon AS lon,
                        v.speed_kts AS speed, v.risk_score AS risk_score,
                        v.vessel_type AS vessel_type
+                ORDER BY v.last_seen DESC
+                LIMIT 5000
             """)
             vessels = [dict(rec) for rec in r]
         driver.close()
