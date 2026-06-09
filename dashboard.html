@@ -1117,7 +1117,8 @@ async function loadMapData() {
       // Analyze data composition to update the UI Badge
       const hasSynthetic = allVesselsData.some(v => v.name && v.name.startsWith('VESSEL_'));
       const hasReal = allVesselsData.some(v => v.name && !v.name.startsWith('VESSEL_') && v.name !== 'UNKNOWN VESSEL');
-      
+      const dataSource = data.source || '';
+
       let modeText = "LIVE: AISSTREAM";
       let modeColor = "var(--green)";
       if (hasSynthetic && !hasReal) {
@@ -1126,6 +1127,9 @@ async function loadMapData() {
       } else if (hasSynthetic && hasReal) {
           modeText = "LIVE: MIXED (REAL + SYNTH)";
           modeColor = "var(--accent)";
+      } else if (dataSource === 'neo4j+cassandra') {
+          modeText = `LIVE: AISSTREAM (${allVesselsData.length} vessels)`;
+          modeColor = "var(--green)";
       }
 
       const badgeEl = document.querySelector('.live-badge');
@@ -1252,64 +1256,6 @@ function renderMapMarkers() {
     });
   }
 }
-
-  // Render Vessel Markers
-  if (currentFilter === 'all' || currentFilter === 'high') {
-    allVesselsData.forEach(v => {
-      if (v.lat && v.lon) {
-        const score = parseInt(v.risk_score || 0);
-        
-        if (currentFilter === 'high' && score < 80) {
-          return;
-        }
-
-        let color = '#00e676'; // Theme Green
-        if (score >= 80) {
-          color = '#ff4444'; // Theme Red
-        } else if (score >= 50) {
-          color = '#ffb300'; // Theme Amber
-        }
-
-        const marker = L.circleMarker([v.lat, v.lon], {
-          radius: score >= 80 ? 6 : 5,
-          color: color,
-          fillColor: color,
-          fillOpacity: 0.85,
-          weight: 1.5,
-          stroke: true
-        }).addTo(vesselLayer);
-
-        const popupContent = `
-          <div style="font-family:var(--font-mono); color:var(--text); min-width:180px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-              <span style="font-weight:600; color:#fff; font-size:11px;">${v.name || 'UNKNOWN VESSEL'}</span>
-              <span style="background:rgba(0,212,255,0.08); border:1px solid rgba(0,212,255,0.2); padding:1px 4px; font-size:8px; color:var(--accent); text-transform:uppercase;">${v.vessel_type || 'cargo'}</span>
-            </div>
-            <div style="border-bottom:1px solid var(--border); padding-bottom:6px; margin-bottom:6px; font-size:8px; color:var(--muted)">MMSI: ${v.mmsi} · IMO: ${v.imo || '—'}</div>
-            <table style="width:100%; border-collapse:collapse; font-size:10px; margin-bottom:8px;">
-              <tr>
-                <td style="color:var(--muted); padding:2px 0;">Speed:</td>
-                <td style="text-align:right; font-weight:600; color:#fff;">${parseFloat(v.speed || 0).toFixed(1)} kts</td>
-              </tr>
-              <tr>
-                <td style="color:var(--muted); padding:2px 0;">Position:</td>
-                <td style="text-align:right; color:#fff;">${parseFloat(v.lat).toFixed(4)}, ${parseFloat(v.lon).toFixed(4)}</td>
-              </tr>
-              <tr>
-                <td style="color:var(--muted); padding:2px 0;">Risk Score:</td>
-                <td style="text-align:right; font-weight:600; color:${color};">${score}%</td>
-              </tr>
-            </table>
-            <div style="border-top:1px solid var(--border); padding-top:6px; display:flex; justify-content:space-between; gap:4px;">
-              <button onclick="showVesselGraphPath('${v.mmsi}')" style="flex:1; font-family:var(--font-mono); font-size:8px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:3px 4px; cursor:pointer; text-transform:uppercase; text-align:center; outline:none;">Graph Path</button>
-              <button onclick="showVesselTrack('${v.mmsi}')" style="flex:1; font-family:var(--font-mono); font-size:8px; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:3px 4px; cursor:pointer; text-transform:uppercase; text-align:center; outline:none;">AIS Tracks</button>
-            </div>
-          </div>
-        `;
-        marker.bindPopup(popupContent);
-      }
-    });
-  }
 
 function filterMap(type) {
   currentFilter = type;

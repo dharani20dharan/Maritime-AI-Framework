@@ -51,8 +51,9 @@ def api_neo4j():
         driver = get_neo4j_driver()
         with driver.session() as s:
             counts = {}
+            # FIX: Changed "AnomalyEvent" to "Event" to resolve the missing graph label warning
             for label in ["Vessel", "FlagState", "EEZZone",
-                          "SanctionedEntity", "AnomalyEvent", "PositionRecord"]:
+                          "SanctionedEntity", "Event", "PositionRecord"]:
                 r = s.run(f"MATCH (n:{label}) RETURN count(n) AS c")
                 counts[label] = r.single()["c"]
         driver.close()
@@ -61,7 +62,7 @@ def api_neo4j():
             "flags":     counts["FlagState"],
             "eez_zones": counts["EEZZone"],
             "sanctioned":counts["SanctionedEntity"],
-            "anomalies": counts["AnomalyEvent"],
+            "anomalies": counts["Event"], # Properly map corrected label
             "positions": counts["PositionRecord"],
         })
     except Exception as e:
@@ -103,6 +104,8 @@ def api_map_data():
                        v.last_lat AS lat, v.last_lon AS lon,
                        v.speed_kts AS speed, v.risk_score AS risk_score,
                        v.vessel_type AS vessel_type
+                ORDER BY v.last_seen DESC
+                LIMIT 5000
             """)
             vessels = [dict(rec) for rec in r]
         driver.close()
@@ -132,7 +135,6 @@ def api_map_events():
 
 
 # ── KAFKA ─────────────────────────────────────────────────────────────────────
-# Cache message counts to avoid hammering Kafka
 _kafka_cache = {}
 _kafka_cache_ts = 0
 
@@ -167,7 +169,6 @@ def api_topics():
                 continue
             partitions = topics_meta.topics[topic_name].partitions
             tps = [TopicPartition(topic_name, p) for p in partitions]
-            # Get end offsets (approximate message count)
             total = 0
             try:
                 for tp in tps:
@@ -242,8 +243,8 @@ def api_cassandra():
     def _via_docker_exec():
         """Run cqlsh inside the container — works regardless of port forwarding."""
         queries = {
-            "total_positions": "SELECT COUNT(*) FROM maf_ais.ais_positions;",
-            "tracked_vessels": "SELECT COUNT(*) FROM maf_ais.vessel_track_summary;",
+            "total_positions": "SELECT value FROM maf_ais.dashboard_stats WHERE metric = 'total_positions';",
+            "tracked_vessels": "SELECT value FROM maf_ais.dashboard_stats WHERE metric = 'tracked_vessels';",
         }
         results = {}
         for key, cql in queries.items():
@@ -252,10 +253,6 @@ def api_cassandra():
                     ["docker", "exec", "maf-cassandra", "cqlsh", "-e", cql],
                     capture_output=True, text=True, timeout=20 , shell=(os.name == 'nt')
                 )
-                # cqlsh output looks like:
-                #  count
-                # -------
-                #     50
                 lines = [l.strip() for l in out.stdout.strip().split('\n') if l.strip()]
                 # Find the number line (last line that's all digits)
                 for line in reversed(lines):
@@ -263,7 +260,11 @@ def api_cassandra():
                         results[key] = int(line.replace(',',''))
                         break
                 else:
-                    results[key] = 0
+                    # Workaround if dashboard_stats table isn't populated or returned empty
+                    if key == "tracked_vessels":
+                        results[key] = "N/A"
+                    else:
+                        results[key] = 0
             except Exception as ex:
                 results[key] = f"err:{ex}"
         return results
@@ -288,8 +289,29 @@ def api_cassandra():
                 "total_positions": 0, "tracked_vessels": 0
             })
         session.set_keyspace("maf_ais")
-        total   = session.execute("SELECT COUNT(*) FROM ais_positions").one()[0]
-        tracked = session.execute("SELECT COUNT(*) FROM vessel_track_summary").one()[0]
+        
+        # OPTIMIZED: Point-lookup queries for both counters — no full-table scans.
+        try:
+            pos_row = session.execute(
+                "SELECT value FROM dashboard_stats WHERE metric = 'total_positions'"
+            ).one()
+            total = pos_row[0] if pos_row else 0
+        except Exception as e:
+            log.warning("dashboard_stats total_positions lookup failed (%s). Defaulting to 0.", e)
+            total = 0
+        
+        # OPTIMIZED: Point-lookup query for specific row key metric
+        try:
+            stats_row = session.execute("SELECT value FROM dashboard_stats WHERE metric = 'tracked_vessels'").one()
+            tracked = stats_row[0] if stats_row else 0
+        except Exception as e:
+            log.warning("dashboard_stats table lookup failed (%s). Applying local tracker fallback limit.", e)
+            # Safe Workaround Implementation: Limit read scan to 1000 items locally
+            sample_rows = session.execute("SELECT mmsi FROM vessel_track_summary LIMIT 1000")
+            tracked = sum(1 for _ in sample_rows)
+            if tracked >= 1000:
+                tracked = "1000+"
+
         cluster.shutdown()
         return jsonify({
             "total_positions": total,
@@ -312,15 +334,10 @@ def api_cassandra():
 # ── SERVICES ──────────────────────────────────────────────────────────────────
 @app.route("/api/services")
 def api_services():
-    """
-    Probe each service with a lightweight connectivity check.
-    Returns 'healthy', 'error', or 'unknown' per service.
-    """
     import socket
 
     def tcp_check(host, port, timeout=3):
         try:
-            # Force IPv4 by resolving to 127.0.0.1 explicitly
             s = socket.create_connection(("127.0.0.1", port), timeout=timeout)
             s.close()
             return "healthy"
@@ -366,8 +383,6 @@ def api_services():
 
     kafka_status = kafka_check()
     return jsonify({
-        # ZooKeeper port 2181 is internal to Docker only — not exposed to host.
-        # It is healthy if Kafka is healthy (Kafka depends on ZooKeeper).
         "zookeeper": "healthy" if kafka_status == "healthy" else "starting",
         "kafka":     kafka_status,
         "neo4j":     neo4j_check(),
@@ -386,7 +401,6 @@ def api_vessel_path(mmsi):
     try:
         driver = get_neo4j_driver()
         with driver.session() as s:
-            # Query the vessel, its flag, owner, and sanctions
             r = s.run("""
                 MATCH (v:Vessel {mmsi: $mmsi})
                 OPTIONAL MATCH (v)-[:REGISTERED_UNDER|FLAGGED_UNDER]->(f:Flag)
@@ -436,13 +450,12 @@ def api_vessel_tracks(mmsi):
     # Try direct driver first
     try:
         from cassandra.cluster import Cluster
-        cluster = Cluster([CASSANDRA_HOST], port=CASSANDRA_PORT, connect_timeout=5)
+        cluster = Cluster([CASSANDRA_HOST], port=CASSANDRA_PORT, connect_timeout=10)
         session = cluster.connect("maf_ais")
+        session.default_timeout = 30 # Protections added for track fetching paths
         
-        # We query the last 7 days of buckets
         today = datetime.datetime.now(datetime.timezone.utc)
         buckets = [(today - datetime.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(10)]
-        # Also add '2026-05-22' explicitly since that is where the sample data resides
         if '2026-05-22' not in buckets:
             buckets.append('2026-05-22')
             
@@ -462,11 +475,9 @@ def api_vessel_tracks(mmsi):
                     })
         cluster.shutdown()
         
-        # Sort tracks by timestamp descending
         tracks.sort(key=lambda x: x["timestamp"], reverse=True)
         return jsonify({"mmsi": mmsi, "tracks": tracks, "source": "cassandra"})
     except Exception as e:
-        # Fallback to a beautiful generated track based on vessel last coordinates if Cassandra fails
         log.warning("Cassandra track query failed: %s. Generating local track fallback.", e)
         
         try:
