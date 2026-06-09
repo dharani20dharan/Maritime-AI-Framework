@@ -75,20 +75,10 @@ def main():
     args = parser.parse_args()
 
     cluster, session = connect()
-
-    # ── Ensure rows exist ────────────────────────────────────────────────────
-    # INSERT IF NOT EXISTS so we never clobber a counter that's already running.
-    session.execute(
-        "INSERT INTO dashboard_stats (metric, value) VALUES ('total_positions', 0) IF NOT EXISTS"
-    )
-    session.execute(
-        "INSERT INTO dashboard_stats (metric, value) VALUES ('tracked_vessels', 0) IF NOT EXISTS"
-    )
-    log.info("Ensured both counter rows exist in dashboard_stats.")
-
+    
     # ── Count tracked vessels ────────────────────────────────────────────────
     log.info("Counting distinct MMSIs in vessel_track_summary …")
-    tracked = session.execute("SELECT COUNT(*) FROM vessel_track_summary").one()[0]
+    tracked = session.execute("SELECT COUNT(*) FROM vessel_track_summary", timeout=120.0).one()[0]
     log.info("  tracked_vessels = %d", tracked)
 
     # ── Count total positions ────────────────────────────────────────────────
@@ -98,19 +88,24 @@ def main():
     else:
         log.info("Counting rows in ais_positions — this may take a while on large tables …")
         log.info("  Tip: use --total-positions <N> to skip this scan.")
-        total = session.execute("SELECT COUNT(*) FROM ais_positions").one()[0]
+        total = session.execute("SELECT COUNT(*) FROM ais_positions", timeout=300.0).one()[0]
         log.info("  total_positions = %d", total)
 
     # ── Write (or report) ────────────────────────────────────────────────────
     if args.dry_run:
         log.info("DRY RUN — would write: tracked_vessels=%d, total_positions=%d", tracked, total)
     else:
+        log.info("Resetting counters by deleting existing metric rows...")
+        session.execute("DELETE FROM dashboard_stats WHERE metric = 'tracked_vessels'")
+        session.execute("DELETE FROM dashboard_stats WHERE metric = 'total_positions'")
+        
+        log.info("Seeding counters with new values...")
         session.execute(
-            "UPDATE dashboard_stats SET value = %s WHERE metric = 'tracked_vessels'",
+            "UPDATE dashboard_stats SET value = value + %s WHERE metric = 'tracked_vessels'",
             (tracked,),
         )
         session.execute(
-            "UPDATE dashboard_stats SET value = %s WHERE metric = 'total_positions'",
+            "UPDATE dashboard_stats SET value = value + %s WHERE metric = 'total_positions'",
             (total,),
         )
         log.info("Counters written successfully.")

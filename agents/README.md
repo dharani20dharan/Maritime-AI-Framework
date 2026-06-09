@@ -1,53 +1,87 @@
-# Autonomous Agents & Reasoning Layer
+# Autonomous Agents & Reasoning Layer (Agent Zero AI)
 
-This directory contains the LangGraph workflow and the Model Context Protocol (MCP) server for the Maritime AI Framework (Engineer B's domain).
+This directory contains the capability-centric multi-agent reasoning layer and the Model Context Protocol (MCP) server for the Maritime AI Framework (Engineer B's domain), graduated from LangGraph to **Agent Zero AI**.
 
-## Architecture overview
+## Architecture Overview
 
-We employ a modular, graph-based agentic architecture to process incoming vessel data.
-
-### 1. LangGraph Orchestrator (`graph.py` & `state.py`)
-LangGraph is used to orchestrate a deterministic, multi-agent state machine. State is passed between nodes via the `AgentState` TypedDict.
+We employ a modular, capability-centric multi-agent architecture to process incoming vessel observations. This design aligns with the DRDO framework: agents are organized around **capabilities** rather than sensors, ensuring seamless scalability when new sensor feeds are added.
 
 ```mermaid
 graph TD
-    A([Entry: retrieve_data]) --> B(Data Retrieval Agent)
-    B --> C(Rule Evaluation Agent)
-    C --> D{Is Vessel Suspicious?}
+    User([User Prompt / Mission Goal]) --> Orchestrator[Orchestrator Agent - Superior]
     
-    %% Conditional Edges
-    D -- Yes (Score >= 50) --> E(Output Generation Agent)
-    D -- No (Score < 50) --> F([END])
-    
-    E --> F
+    Orchestrator -->|Delegates Collection & Fusion| CF_Agent[Collection & Fusion Agent]
+    Orchestrator -->|Delegates DB/Graph Operations| KG_Agent[Knowledge Graph Agent]
+    Orchestrator -->|Delegates Anomaly Rules| BD_Agent[Behavior & Dark Ship Agent]
+    Orchestrator -->|Delegates Hypothesis & Scoring| TA_Agent[Threat Assessment Agent]
+    Orchestrator -->|Delegates Report Synthesis| RA_Agent[Recs & Action Agent]
+
+    %% Tools mappings
+    CF_Agent --> CF_Tools[Collection Tools: Scrapers, Live AIS]
+    KG_Agent --> KG_Tools[Neo4j & Cassandra Queries]
+    BD_Agent --> BD_Tools[Anomaly Rule Engine, STS Detector]
+    TA_Agent --> TA_Tools[Risk Scorer, GDS Centrality]
+    RA_Agent --> RA_Tools[SAR Generation & DB Writers]
 ```
 
-#### The Agents
-*   **Data Retrieval Agent**: Interfaces with the raw data ingestion layer (Kafka/NiFi endpoints) to pull historical context.
-*   **Rule Evaluation Agent (The Critic)**: Evaluates the raw data against complex rules and the Neo4j Knowledge Graph. Assigns an *Evasion Risk Score (0-100)*.
-*   **Output Generation Agent**: An LLM (e.g., OpenAI) that takes the anomaly flags and synthesizes them into a human-readable Suspicious Activity Report (SAR). This node is *only* triggered if the risk score exceeds a threshold, saving LLM tokens on safe vessels.
+### The Capability Agents:
+1. **Orchestrator Agent (Superior):** Handles mission planning, goal decomposition, sub-task allocation, and final results synthesis.
+2. **Collection & Fusion Agent (Subordinate):** Gathers raw sensor and registry observations (MarineTraffic, Equasis) and fuses them into a unified vessel state.
+3. **Knowledge Graph Agent (Subordinate):** Queries and updates entity and event nodes/relationships in the Neo4j Knowledge Graph.
+4. **Behavior & Dark Ship Agent (Subordinate):** Runs rule engines to detect GPS speed spoofing, transponder gaps, bathymetric draft plausibility, and loitering rendezvous (Ship-to-Ship transfers).
+5. **Threat Assessment Agent (Subordinate):** Computes aggregate evasion risk scores (0-100), extracts risk flags, and evaluates betweenness centrality.
+6. **Recommendation & Action Agent (Subordinate):** Generates human-readable Suspicious Activity Reports (SAR) and saves them in the database.
 
-### 2. Model Context Protocol Server (`mcp_server.py`)
-To expose our specific Python/Neo4j tool logic (like the `SanctionScorer`) to any LLM runtime, we wrap it in a lightweight FastMCP server. This means Claude Desktop, Cursor, or LangChain agents can dynamically discover and execute our maritime graph queries.
+---
+
+## File Structure
+
+*   `agent_zero_orchestrator.py`: The main entry point initializing and running the superior-subordinate coordination loop.
+*   `agent_zero_config.py`: Profiles, model properties (using Groq Llama-3 models), and system instructions.
+*   `agent_zero_tools.py`: Modular Python functions mapped as tools for capability-centric execution.
+*   `mcp_server.py`: Wraps our custom Neo4j scorer in a FastMCP server, allowing other external agent frameworks to discover and execute our tools.
+
+---
 
 ## Getting Started
 
 ### Prerequisites
-Ensure your virtual environment is active and all dependencies in the root `requirements.txt` are installed.
+
+Ensure your virtual environment is active and all dependencies in the root `requirements.txt` are installed:
+```bash
+pip install -r requirements.txt
+```
+
+Verify your `.env` file contains your configuration. You can switch between Groq (online/cloud) and Ollama (offline/local) using the `LLM_PROVIDER` toggle:
+
+#### Online Option (Groq):
+```env
+LLM_PROVIDER="groq"
+GROQ_API_KEY="your-groq-key-here"
+```
+
+#### Offline/Local Option (Ollama):
+1. Make sure Ollama is running locally on `http://localhost:11434`.
+2. Pull your local models, e.g.: `ollama pull llama3:8b`.
+3. Configure your `.env`:
+```env
+LLM_PROVIDER="ollama"
+OLLAMA_API_BASE="http://localhost:11434/v1"
+OLLAMA_ORCHESTRATOR_MODEL="llama3:8b" # (Or llama3:70b if high-end local GPU is available)
+OLLAMA_SUBORDINATE_MODEL="llama3:8b"
+```
+
+### Run the Agent Zero Orchestrator
+
+To execute a test run of the multi-agent reasoning flow against the active database:
+```bash
+python agents/agent_zero_orchestrator.py
+```
+This runs the orchestrator in a superior-subordinate loop. It will output a reasoning log demonstrating capability delegation and tool usage for both safe and suspicious vessels.
 
 ### Run the MCP Server
+
 To start the MCP server locally using stdio (which MCP clients connect to):
 ```bash
-python mcp_server.py
+python agents/mcp_server.py
 ```
-
-### Run the LangGraph Pipeline
-To execute a test run of the multi-agent workflow against the dummy database:
-```bash
-python graph.py
-```
-
-## Best Practices for Modular AI Pipelines
-1.  **State is Immutable**: Always return a delta update from your LangGraph nodes; never mutate the `state` dictionary directly.
-2.  **Save LLM Tokens**: Use cheap deterministic rules (like Neo4j Cypher queries or Python heuristics) to filter out "noise" *before* invoking an LLM. 
-3.  **Human-in-the-loop**: For high-risk SAR generation, LangGraph allows adding a `breakpoint` before the `END` node, pausing execution until a human analyst approves the report.

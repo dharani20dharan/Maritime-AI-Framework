@@ -178,3 +178,16 @@ CREATE INDEX IF NOT EXISTS ais_positions_by_imo
 
 CREATE INDEX IF NOT EXISTS ais_positions_by_flag
     ON ais_positions (flag);
+
+
+-- =============================================================================
+--  TABLE 4 : dashboard_stats
+--  Stores metrics for the dashboard. Defined as a counter table to avoid
+--  expensive full table COUNT(*) scans.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS dashboard_stats (
+    metric text PRIMARY KEY,
+    value counter
+) WITH comment = 'Dashboard counters and statistics.';
+
