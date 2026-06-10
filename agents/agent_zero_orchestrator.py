@@ -272,18 +272,26 @@ if __name__ == "__main__":
     try:
         driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "maf_neo4j_2024"))
         with driver.session() as session:
-            # High-risk target
-            risk_result = session.run("MATCH (v:Vessel)-[:INVOLVED_IN]->(e:Event) WHERE v.imo STARTS WITH '900' RETURN DISTINCT v.imo AS imo LIMIT 1")
-            test_vessels.extend([record["imo"] for record in risk_result])
+            # 1. Directly sanctioned target (linked via SANCTIONED_BY)
+            sanctioned_result = session.run("MATCH (v:Vessel)-[:SANCTIONED_BY]->(s:Sanction) WHERE v.imo IS NOT NULL RETURN DISTINCT v.imo AS imo LIMIT 1")
+            rec = sanctioned_result.single()
+            if rec:
+                test_vessels.append(rec["imo"])
+            else:
+                # Fallback to high-risk query if no links exist
+                risk_result = session.run("MATCH (v:Vessel)-[:INVOLVED_IN]->(e:Event) WHERE v.imo STARTS WITH '900' RETURN DISTINCT v.imo AS imo LIMIT 1")
+                test_vessels.extend([record["imo"] for record in risk_result])
             
-            # Normal commercial target
-            safe_result = session.run("MATCH (v:Vessel) WHERE NOT v.imo STARTS WITH '900' RETURN DISTINCT v.imo AS imo LIMIT 1")
-            test_vessels.extend([record["imo"] for record in safe_result])
+            # 2. Normal commercial target (not sanctioned)
+            safe_result = session.run("MATCH (v:Vessel) WHERE NOT (v)-[:SANCTIONED_BY]->() AND v.imo IS NOT NULL RETURN DISTINCT v.imo AS imo LIMIT 1")
+            rec_safe = safe_result.single()
+            if rec_safe:
+                test_vessels.append(rec_safe["imo"])
         driver.close()
     except Exception as e:
         print(f"Failed to fetch live vessels from Neo4j: {e}. Falling back to static test IMOs.")
-        # Fallbacks: 9988776 (Suspicious), 9123456 (Safe)
-        test_vessels = ["9988776", "9123456"]
+        # Fallbacks: 9179385 (Suspicious - SIMUSHIR), 9715751 (Safe)
+        test_vessels = ["9179385", "9715751"]
         
     if not test_vessels:
         print("No active vessels found for test.")

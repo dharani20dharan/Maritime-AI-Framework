@@ -111,6 +111,28 @@ def evaluate_vessel_behavior(vessel_state: Dict[str, Any]) -> List[Dict[str, Any
         vessel_state (dict): JSON state of the vessel including historical track and metadata.
     """
     logging.info(f"[Tool: Behavior Analysis] Running rule engine checks...")
+    
+    # Sanitize and validate history to avoid KeyErrors and ensure compatibility
+    if "history" in vessel_state and isinstance(vessel_state["history"], list):
+        valid_history = []
+        for point in vessel_state["history"]:
+            if isinstance(point, dict):
+                lat = point.get("lat") or point.get("latitude")
+                lon = point.get("lon") or point.get("longitude")
+                # Ensure we have both coordinates and a timestamp
+                if lat is not None and lon is not None:
+                    valid_history.append({
+                        "lat": float(lat),
+                        "lon": float(lon),
+                        "speed": float(point.get("speed") or point.get("speed_kts") or 0.0),
+                        "timestamp": point.get("timestamp")
+                    })
+        if not valid_history:
+            # Discard fabricated/invalid history to trigger Cassandra data fetch
+            vessel_state.pop("history", None)
+        else:
+            vessel_state["history"] = valid_history
+
     engine = RuleEngine()
     try:
         anomalies = engine.evaluate(vessel_state)

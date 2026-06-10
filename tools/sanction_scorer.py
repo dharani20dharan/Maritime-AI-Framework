@@ -31,12 +31,14 @@ class SanctionScorer:
             # ---------------------------------------------------------
             direct_sanction_query = """
             MATCH (v:Vessel {imo: $imo})-[:SANCTIONED_BY]->(s:Sanction)
-            RETURN s.program AS Program LIMIT 1
+            RETURN s.programs AS Program LIMIT 1
             """
             direct_result = session.run(direct_sanction_query, imo=vessel_imo).single()
             if direct_result:
                 risk_score += 100
-                flags.append(f"Vessel is directly sanctioned under: {direct_result['Program']}")
+                programs = direct_result['Program']
+                programs_str = ", ".join(programs) if isinstance(programs, list) else str(programs)
+                flags.append(f"Vessel is directly sanctioned under: {programs_str}")
 
             # ---------------------------------------------------------
             # 2. M-SHELL-CHAIN (Shell Company Chain & Obfuscated Ownership)
