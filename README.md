@@ -7,9 +7,8 @@
 
 ```bash
 cp .env.example .env
-# (optional) add your AISSTREAM_API_KEY to .env
-docker compose up -d zookeeper kafka neo4j
-docker compose up -d ais-ingestor signal-analyser sanctions-ingestor neo4j-etl
+# add your AISSTREAM_API_KEY to .env
+docker compose up -d
 ```
 
 ### 🗺️ GFW GIS Live Operations Dashboard
@@ -54,12 +53,6 @@ We have built an interactive, dark-themed operations dashboard leveraging Leafle
 - **AISHub.net** — alternative; requires sharing your own AIS feed in return
   - https://www.aishub.net/join-us
 
-#### Vessel registry
-- **Equasis** — free vessel particulars, ownership, class, inspections
-  - https://www.equasis.org → register (free) → use `ingestion/registry/equasis_scraper.py` (Week 2)
-- **ITU MARS** — official MMSI registry
-  - https://www.itu.int/en/ITU-R/terrestrial/fmd/Pages/mars.aspx
-
 #### Bathymetry
 - **GEBCO 2026** — authoritative global ocean depth grid, 15 arc-second resolution
   - Download: https://download.gebco.net/ → select region → NetCDF format
@@ -95,22 +88,6 @@ We have built an interactive, dark-themed operations dashboard leveraging Leafle
 | `ais.validated` | ais-ingestor | signal-analyser, neo4j-etl | Valid Contract A1 envelopes |
 | `ais.anomalies` | signal-analyser | (critic layer) | M-AIS-BEACON, M-SPEED-ANOMALY events |
 
----
-
-
-
-### Entry points for merging:
-
-1. **Neo4j** at `bolt://localhost:7687` (user: `neo4j`, pw: in `.env`)
-   - Schema documented in `infra/neo4j/init/schema_init.cypher`
-   - Read-only — all writes go through `neo4j-etl` or `sanctions-ingestor`
-
-2. **Kafka topic `ais.anomalies`** — Stage 1 anomaly events ready for your critic layer
-   - Schema in `shared/contracts/A1_ais_envelope.py`
-
-3. **Contract B1** — agent tools must query Neo4j read-only via Bolt
-   - Schema version: 1.0 (see `infra/neo4j/init/schema_init.cypher`)
-   - Notify Engineer A before any schema changes
 
 4. **Contract C1** — debate log output schema (your responsibility to define)
    - Required fields: `hypothesis`, `evidence_for`, `evidence_against`,
