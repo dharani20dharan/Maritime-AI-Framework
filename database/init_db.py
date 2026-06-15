@@ -7,7 +7,7 @@ data integrity and query performance.
 from neo4j import GraphDatabase
 
 URI = "neo4j://localhost:7687"
-AUTH = ("neo4j", "maritime123")
+AUTH = ("neo4j", "maf_neo4j_2024")
 
 def init_constraints_and_indexes(driver):
     with driver.session() as session:

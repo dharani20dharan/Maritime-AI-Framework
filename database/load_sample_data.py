@@ -9,7 +9,7 @@ import uuid
 from datetime import date, datetime
 
 URI = "neo4j://localhost:7687"
-AUTH = ("neo4j", "maritime123")
+AUTH = ("neo4j", "maf_neo4j_2024")
 
 def load_data(driver):
     with driver.session() as session:

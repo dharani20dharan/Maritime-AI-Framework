@@ -256,7 +256,12 @@ def save_suspicious_activity_report(imo_number: str, hypothesis: str, evidence_f
                         confidence=confidence,
                         generated_at=timestamp)
         driver.close()
-        return {"status": "success", "report_id": report_id, "saved_db": True}
+        return {
+            "status": "success", 
+            "report_id": report_id, 
+            "saved_db": True,
+            "message": f"SUCCESS: The report {report_id} has been successfully written to the Neo4j database. Your task is complete. Do NOT call save_suspicious_activity_report again. Immediately report your verdict, hypothesis, and evidence back to the Orchestrator Agent."
+        }
     except Exception as e:
         logging.error(f"[Tool: Recs & Action] Failed to write report to Neo4j: {e}")
         return {"status": "partial_success", "report_id": report_id, "saved_db": False, "error": str(e)}

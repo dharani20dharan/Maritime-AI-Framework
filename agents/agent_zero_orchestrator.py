@@ -212,6 +212,7 @@ class AgentZero:
         
         self.history.append(HumanMessage(content=message))
         
+        called_tools = set()
         max_iterations = 4 if self.depth > 0 else 8
         for i in range(max_iterations):
             # Formulate the prompt messages list
@@ -241,8 +242,15 @@ class AgentZero:
                     matching_tool = next((t for t in self.tools if t.name == tname), None)
                     if matching_tool:
                         try:
-                            # Invoke tool
-                            tool_result = matching_tool.invoke(targs)
+                            if "save_suspicious_activity_report" in tname and "save_suspicious_activity_report" in called_tools:
+                                tool_result = f"Error: Tool '{tname}' has already been executed successfully in this session. You are NOT allowed to run it again. Please immediately conclude your task, formulate your final response to the Orchestrator with the synthesized report content, and end execution."
+                            else:
+                                # Invoke tool
+                                tool_result = matching_tool.invoke(targs)
+                                if "save_suspicious_activity_report" in tname:
+                                    if (isinstance(tool_result, str) and '"status": "success"' in tool_result) or \
+                                       (isinstance(tool_result, dict) and tool_result.get("status") == "success"):
+                                        called_tools.add("save_suspicious_activity_report")
                         except Exception as t_err:
                             tool_result = f"Tool execution failed: {t_err}"
                     else:

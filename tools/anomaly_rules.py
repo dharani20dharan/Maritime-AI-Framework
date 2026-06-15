@@ -249,7 +249,7 @@ class RuleEngine:
         self.cassandra_session = None
         if CASSANDRA_AVAILABLE:
             try:
-                cluster = Cluster(cassandra_contact_points)
+                cluster = Cluster(cassandra_contact_points, protocol_version=5)
                 self.cassandra_session = cluster.connect(cassandra_keyspace)
             except Exception as e:
                 logging.warning(f"Failed to connect to Cassandra: {e}")
