@@ -55,7 +55,10 @@ def retrieve_data_node(state: AgentState):
     
     try:
         # Connect to Neo4j to pull latest vessel node data
-        driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "maf_neo4j_2024"))
+        neo4j_uri = os.getenv("NEO4J_URI")
+        neo4j_user = os.getenv("NEO4J_USER")
+        neo4j_pw = os.getenv("NEO4J_PASSWORD")
+        driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_pw))
         with driver.session() as session:
             result = session.run("MATCH (v:Vessel {imo: $imo}) RETURN v.name AS name, v.vessel_type AS vessel_type", imo=state["vessel_imo"]).single()
             if result:
@@ -235,7 +238,10 @@ if __name__ == "__main__":
     # 1. Dynamically fetch vessels from the Neo4j Database
     test_vessels = []
     try:
-        driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "maf_neo4j_2024"))
+        neo4j_uri = os.getenv("NEO4J_URI")
+        neo4j_user = os.getenv("NEO4J_USER")
+        neo4j_pw = os.getenv("NEO4J_PASSWORD")
+        driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_pw))
         with driver.session() as session:
             # First, fetch 2 LIVE, safe commercial vessels that just pinged
             safe_result = session.run("MATCH (v:Vessel) WHERE NOT v.imo STARTS WITH '900' RETURN DISTINCT v.imo AS imo LIMIT 2")

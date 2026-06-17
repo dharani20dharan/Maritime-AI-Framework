@@ -5,9 +5,12 @@ for a given vessel based on identity, behavioral, and ownership anomalies.
 """
 from neo4j import GraphDatabase
 import json
+import os
 
-URI = "bolt://localhost:7687"
-AUTH = ("neo4j", "maf_neo4j_2024")
+URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+USER = os.getenv("NEO4J_USER", )
+PASSWORD = os.getenv("NEO4J_PASSWORD")
+AUTH = (USER, PASSWORD)
 
 class SanctionScorer:
     def __init__(self, uri=URI, auth=AUTH):
