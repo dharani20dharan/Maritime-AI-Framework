@@ -126,7 +126,7 @@ class FeedHealthTracker:
 # ---------- LOCAL FALLBACK ---------------------------------------------------
 def try_local(filename: str) -> Optional[bytes]:
     path = Path(LOCAL_FEED_DIR) / filename
-    if path.exists():
+    if path.exists() and path.stat().st_size > 0:
         log.info("Using local feed file: %s", path)
         return path.read_bytes()
     return None

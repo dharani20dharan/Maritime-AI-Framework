@@ -1,8 +1,11 @@
+import os
 from neo4j import GraphDatabase
 import logging
 
-URI = "bolt://localhost:7687"
-AUTH = ("neo4j", "maf_neo4j_2024")
+URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
+USER = os.getenv("NEO4J_USER", "neo4j")
+PASSWORD = os.getenv("NEO4J_PASSWORD", "maf_neo4j_2024")
+AUTH = (USER, PASSWORD)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 

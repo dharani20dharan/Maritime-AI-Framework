@@ -12,20 +12,21 @@ AUTH = ("neo4j", "maf_neo4j_2024")
 def init_constraints_and_indexes(driver):
     with driver.session() as session:
         # Constraints
-        # Constraints ensure that properties like IMO and UNLOCODE remain unique across nodes.
+        # Constraints ensure that properties remain unique across nodes.
         # This automatically creates a supporting index for fast lookups.
         print("Creating constraints...")
-        session.run("CREATE CONSTRAINT vessel_imo IF NOT EXISTS FOR (v:Vessel) REQUIRE v.imo IS UNIQUE")
         session.run("CREATE CONSTRAINT company_imo IF NOT EXISTS FOR (c:Company) REQUIRE c.company_imo IS UNIQUE")
         session.run("CREATE CONSTRAINT port_unlocode IF NOT EXISTS FOR (p:Port) REQUIRE p.unlocode IS UNIQUE")
         session.run("CREATE CONSTRAINT voyage_id IF NOT EXISTS FOR (v:Voyage) REQUIRE v.voyage_id IS UNIQUE")
         session.run("CREATE CONSTRAINT sanction_id IF NOT EXISTS FOR (s:Sanction) REQUIRE s.sanction_id IS UNIQUE")
         session.run("CREATE CONSTRAINT flag_country_code IF NOT EXISTS FOR (f:Flag) REQUIRE f.country_code IS UNIQUE")
         session.run("CREATE CONSTRAINT event_id IF NOT EXISTS FOR (e:Event) REQUIRE e.event_id IS UNIQUE")
+        session.run("CREATE CONSTRAINT eez_id IF NOT EXISTS FOR (e:EEZZone) REQUIRE e.zone_id IS UNIQUE")
         
         # Indexes
         # Indexes speed up queries that filter by non-unique properties like names and event types.
         print("Creating indexes...")
+        session.run("CREATE INDEX vessel_imo IF NOT EXISTS FOR (v:Vessel) ON (v.imo)")
         session.run("CREATE INDEX vessel_mmsi IF NOT EXISTS FOR (v:Vessel) ON (v.mmsi)")
         session.run("CREATE INDEX vessel_name IF NOT EXISTS FOR (v:Vessel) ON (v.name)")
         session.run("CREATE INDEX company_name IF NOT EXISTS FOR (c:Company) ON (c.name)")

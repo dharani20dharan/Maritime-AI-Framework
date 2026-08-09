@@ -7,8 +7,8 @@
 // ── CONSTRAINTS (uniqueness + existence) ─────────────────────────────────────
 
 // Vessel — primary key is IMO (globally unique per physical ship)
-CREATE CONSTRAINT vessel_imo IF NOT EXISTS
-  FOR (v:Vessel) REQUIRE v.imo IS UNIQUE;
+CREATE INDEX vessel_imo IF NOT EXISTS
+  FOR (v:Vessel) ON (v.imo);
 
 // Vessel — MMSI is not unique (can be reused/spoofed) but indexed
 CREATE INDEX vessel_mmsi IF NOT EXISTS
@@ -19,8 +19,8 @@ CREATE CONSTRAINT company_id IF NOT EXISTS
   FOR (c:Company) REQUIRE c.registry_id IS UNIQUE;
 
 // Flag state
-CREATE CONSTRAINT flag_code IF NOT EXISTS
-  FOR (f:FlagState) REQUIRE f.iso_code IS UNIQUE;
+CREATE CONSTRAINT flag_country_code IF NOT EXISTS
+  FOR (f:Flag) REQUIRE f.country_code IS UNIQUE;
 
 // EEZ zone
 CREATE CONSTRAINT eez_id IF NOT EXISTS

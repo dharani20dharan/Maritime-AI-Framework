@@ -31,3 +31,10 @@ desktop.ini
 .idea/
 *.suo
 *.user
+
+# ── Runtime & Data Dumps ──────────────────────────────────────────────────────
+infra/neo4j/data/
+infra/neo4j/logs/
+ingestion/sanctions/feeds/
+neo4j/
+check.py

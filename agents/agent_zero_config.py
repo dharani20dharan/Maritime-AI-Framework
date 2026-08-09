@@ -1,16 +1,19 @@
 """
 Agent Zero Agent Configurations and System Prompts.
 Defines the profiles and instructions for the Orchestrator and each capability-centric agent.
+Configured for OFFLINE deployment — default LLM provider is Ollama (local).
 """
 
 import os
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
+# LLM_PROVIDER defaults to 'ollama' for fully offline/local deployment.
+# Override in .env: LLM_PROVIDER=groq or LLM_PROVIDER=openai
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
 
 if LLM_PROVIDER == "ollama":
     LLM_CONFIG = {
-        "orchestrator_model": os.getenv("OLLAMA_ORCHESTRATOR_MODEL", "llama3:8b"),
-        "subordinate_model": os.getenv("OLLAMA_SUBORDINATE_MODEL", "llama3:8b"),
+        "orchestrator_model": os.getenv("OLLAMA_ORCHESTRATOR_MODEL", "qwen2.5:7b"),
+        "subordinate_model": os.getenv("OLLAMA_SUBORDINATE_MODEL", "qwen2.5:7b"),
         "temperature": 0.1
     }
 elif LLM_PROVIDER == "openai":
@@ -19,10 +22,10 @@ elif LLM_PROVIDER == "openai":
         "subordinate_model": os.getenv("OPENAI_SUBORDINATE_MODEL", "gpt-4o-mini"),
         "temperature": 0.1
     }
-else:  # Default to Groq
+else:  # Default to Ollama (offline)
     LLM_CONFIG = {
-        "orchestrator_model": os.getenv("GROQ_ORCHESTRATOR_MODEL", "llama-3.3-70b-versatile"),
-        "subordinate_model": os.getenv("GROQ_SUBORDINATE_MODEL", "llama-3.1-8b-instant"),
+        "orchestrator_model": os.getenv("OLLAMA_ORCHESTRATOR_MODEL", "qwen2.5:7b"),
+        "subordinate_model": os.getenv("OLLAMA_SUBORDINATE_MODEL", "qwen2.5:7b"),
         "temperature": 0.1
     }
 
@@ -122,6 +125,8 @@ Your task is to call `save_suspicious_activity_report` once to log the analysis.
 """
 
 # Mappings for Agent Zero setup
+# NOTE: Tool names in the lists MUST match the @tool decorated function .name attributes
+# (which include the _tool suffix as LangChain derives the name from the function name)
 AGENT_PROFILES = {
     "OrchestratorAgent": {
         "system_prompt": ORCHESTRATOR_SYSTEM_PROMPT,
@@ -131,26 +136,26 @@ AGENT_PROFILES = {
     "CollectionFusionAgent": {
         "system_prompt": COLLECTION_FUSION_SYSTEM_PROMPT,
         "model": LLM_CONFIG["subordinate_model"],
-        "tools": ["collect_and_fuse_data"]
+        "tools": ["collect_and_fuse_data_tool"]
     },
     "KnowledgeGraphAgent": {
         "system_prompt": KNOWLEDGE_GRAPH_SYSTEM_PROMPT,
         "model": LLM_CONFIG["subordinate_model"],
-        "tools": ["query_knowledge_graph"]
+        "tools": ["query_knowledge_graph_tool"]
     },
     "BehaviorDarkShipAgent": {
         "system_prompt": BEHAVIOR_DARK_SHIP_SYSTEM_PROMPT,
         "model": LLM_CONFIG["subordinate_model"],
-        "tools": ["evaluate_vessel_behavior", "detect_dark_ship_events"]
+        "tools": ["evaluate_vessel_behavior_tool", "detect_dark_ship_events_tool"]
     },
     "ThreatAssessmentAgent": {
         "system_prompt": THREAT_ASSESSMENT_SYSTEM_PROMPT,
         "model": LLM_CONFIG["subordinate_model"],
-        "tools": ["evaluate_threat_level"]
+        "tools": ["evaluate_threat_level_tool"]
     },
     "RecommendationActionAgent": {
         "system_prompt": RECOMMENDATION_ACTION_SYSTEM_PROMPT,
         "model": LLM_CONFIG["subordinate_model"],
-        "tools": ["save_suspicious_activity_report"]
+        "tools": ["save_suspicious_activity_report_tool"]
     }
 }

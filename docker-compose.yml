@@ -108,7 +108,7 @@ services:
     volumes:
       - ./infra/nifi/templates:/opt/nifi/nifi-current/conf/templates
     healthcheck:
-      test: ["CMD", "curl", "-kf", "https://localhost:8443/nifi"]
+      test: ["CMD-SHELL", "curl -kf https://$$(hostname):8443/nifi"]
       interval: 30s
       timeout: 10s
       retries: 10

@@ -2,6 +2,9 @@
 Agent Zero Multi-Agent Orchestrator.
 Coordinates the DRDO Capability-Centric Maritime Intelligence layers using
 a hierarchical Superior-Subordinate delegation model.
+
+This orchestrator is configured for OFFLINE deployment using Ollama as the LLM backend.
+All processing is local — no external API calls are made.
 """
 import sys
 import os
@@ -17,7 +20,8 @@ load_dotenv()
 # Ensure we can import from the root and tools directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from langchain_groq import ChatGroq
+# NOTE: LangChain imports are done conditionally inside __init__ based on provider.
+# This prevents import errors if optional packages (e.g. langchain_groq) are not installed.
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import tool
 from neo4j import GraphDatabase
@@ -117,13 +121,14 @@ def save_suspicious_activity_report_tool(imo_number: str, hypothesis: str, evide
     return json.dumps(res, indent=2)
 
 # Tool Map for resolving tool executions
+# IMPORTANT: Keys MUST match the actual @tool function .name attribute (which includes the _tool suffix)
 TOOL_MAP = {
-    "collect_and_fuse_data": collect_and_fuse_data_tool,
-    "query_knowledge_graph": query_knowledge_graph_tool,
-    "evaluate_vessel_behavior": evaluate_vessel_behavior_tool,
-    "detect_dark_ship_events": detect_dark_ship_events_tool,
-    "evaluate_threat_level": evaluate_threat_level_tool,
-    "save_suspicious_activity_report": save_suspicious_activity_report_tool
+    "collect_and_fuse_data_tool": collect_and_fuse_data_tool,
+    "query_knowledge_graph_tool": query_knowledge_graph_tool,
+    "evaluate_vessel_behavior_tool": evaluate_vessel_behavior_tool,
+    "detect_dark_ship_events_tool": detect_dark_ship_events_tool,
+    "evaluate_threat_level_tool": evaluate_threat_level_tool,
+    "save_suspicious_activity_report_tool": save_suspicious_activity_report_tool
 }
 
 # ---------------------------------------------------------
@@ -147,32 +152,55 @@ class AgentZero:
             
         # Initialize LLM
         model_name = self.config["model"]
-        provider = os.getenv("LLM_PROVIDER", "groq").lower()
-        
+        # Default to Ollama for full offline deployment. Override with LLM_PROVIDER env var.
+        provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+
         if provider == "ollama":
             from langchain_openai import ChatOpenAI
             api_base = os.getenv("OLLAMA_API_BASE", "http://localhost:11434/v1")
+            agent_log(self.agent_id, f"Using Ollama (offline) — model: {model_name}, base: {api_base}", self.color)
             self.llm = ChatOpenAI(
                 model=model_name,
                 temperature=0.1,
-                openai_api_key="ollama",  # dummy key required by LangChain ChatOpenAI class
-                openai_api_base=api_base
+                api_key="ollama",   # dummy key required by LangChain ChatOpenAI class
+                base_url=api_base  # local Ollama endpoint
             )
         elif provider == "openai":
             from langchain_openai import ChatOpenAI
+            agent_log(self.agent_id, f"Using OpenAI — model: {model_name}", self.color)
             self.llm = ChatOpenAI(
                 model=model_name,
                 temperature=0.1,
                 openai_api_key=os.getenv("OPENAI_API_KEY")
             )
-        else:  # Default to Groq
-            api_key = os.getenv("GROQ_API_KEY")
+        elif provider == "groq":
+            # Optional: Groq cloud provider (requires internet + GROQ_API_KEY)
             try:
+                from langchain_groq import ChatGroq
+                api_key = os.getenv("GROQ_API_KEY")
+                agent_log(self.agent_id, f"Using Groq — model: {model_name}", self.color)
                 self.llm = ChatGroq(model=model_name, temperature=0.1, groq_api_key=api_key)
+            except ImportError:
+                agent_log(self.agent_id, "langchain_groq not installed. Falling back to Ollama.", Colors.WARNING)
+                provider = "ollama"
+                from langchain_openai import ChatOpenAI
+                api_base = os.getenv("OLLAMA_API_BASE", "http://localhost:11434/v1")
+                self.llm = ChatOpenAI(model=model_name, temperature=0.1, api_key="ollama", base_url=api_base)
             except Exception as e:
-                # Fallback to the ultra-fast 8b model if 70b rate limits/authentication fails
-                agent_log(self.agent_id, f"Failed to load Groq model {model_name}: {e}. Falling back to llama-3.1-8b-instant.", Colors.WARNING)
-                self.llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.1, groq_api_key=api_key)
+                agent_log(self.agent_id, f"Groq init failed: {e}. Falling back to Ollama.", Colors.WARNING)
+                from langchain_openai import ChatOpenAI
+                api_base = os.getenv("OLLAMA_API_BASE", "http://localhost:11434/v1")
+                self.llm = ChatOpenAI(model=model_name, temperature=0.1, api_key="ollama", base_url=api_base)
+        else:
+            agent_log(self.agent_id, f"Unknown LLM_PROVIDER '{provider}'. Defaulting to Ollama.", Colors.WARNING)
+            from langchain_openai import ChatOpenAI
+            api_base = os.getenv("OLLAMA_API_BASE", "http://localhost:11434/v1")
+            self.llm = ChatOpenAI(
+                model=model_name,
+                temperature=0.1,
+                api_key="ollama",
+                base_url=api_base
+            )
             
         self.history = []
         
@@ -242,15 +270,15 @@ class AgentZero:
                     matching_tool = next((t for t in self.tools if t.name == tname), None)
                     if matching_tool:
                         try:
-                            if "save_suspicious_activity_report" in tname and "save_suspicious_activity_report" in called_tools:
+                            if "save_suspicious_activity_report_tool" in tname and "save_suspicious_activity_report_tool" in called_tools:
                                 tool_result = f"Error: Tool '{tname}' has already been executed successfully in this session. You are NOT allowed to run it again. Please immediately conclude your task, formulate your final response to the Orchestrator with the synthesized report content, and end execution."
                             else:
                                 # Invoke tool
                                 tool_result = matching_tool.invoke(targs)
-                                if "save_suspicious_activity_report" in tname:
+                                if "save_suspicious_activity_report_tool" in tname:
                                     if (isinstance(tool_result, str) and '"status": "success"' in tool_result) or \
                                        (isinstance(tool_result, dict) and tool_result.get("status") == "success"):
-                                        called_tools.add("save_suspicious_activity_report")
+                                        called_tools.add("save_suspicious_activity_report_tool")
                         except Exception as t_err:
                             tool_result = f"Tool execution failed: {t_err}"
                     else:

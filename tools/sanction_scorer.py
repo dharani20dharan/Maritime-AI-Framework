@@ -3,11 +3,14 @@ Sanction Evasion Risk Scorer
 Connects to the Neo4j Knowledge Graph to calculate an evasion risk score
 for a given vessel based on identity, behavioral, and ownership anomalies.
 """
+import os
 from neo4j import GraphDatabase
 import json
 
-URI = "bolt://localhost:7687"
-AUTH = ("neo4j", "maf_neo4j_2024")
+URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
+USER = os.getenv("NEO4J_USER", "neo4j")
+PASSWORD = os.getenv("NEO4J_PASSWORD", "maf_neo4j_2024")
+AUTH = (USER, PASSWORD)
 
 class SanctionScorer:
     def __init__(self, uri=URI, auth=AUTH):

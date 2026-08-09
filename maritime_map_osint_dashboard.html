@@ -156,13 +156,16 @@
         <span class="text-maf-dim text-xs">|</span>
         <span id="vessel-count" class="font-mono text-[10px] text-maf-dim">0 VESSELS TRACKED</span>
     </div>
-    <div class="flex items-center gap-4 text-[10px] font-mono">
+    <div class="flex items-center gap-3 text-[10px] font-mono">
+        <span class="px-2 py-0.5 bg-maf-accent/10 border border-maf-accent/40 text-maf-accent font-bold rounded-sm">
+            🇮🇳 IST (UTC+05:30)
+        </span>
         <span id="conn-status" class="flex items-center gap-1.5 text-maf-warn">
             <span class="w-1.5 h-1.5 rounded-full bg-maf-warn animate-pulse"></span>
             CONNECTING…
         </span>
         <span class="text-maf-dim">|</span>
-        <span id="clock" class="text-maf-text">--:--:-- UTC</span>
+        <span id="clock" class="text-maf-accent font-bold font-mono">--:--:-- IST</span>
     </div>
 </header>
 
@@ -172,10 +175,16 @@
     <!-- SIDEBAR -->
     <aside class="sidebar bg-maf-panel border-r border-maf-border flex flex-col z-20 overflow-hidden">
 
-        <!-- Search -->
+        <!-- Search & Quick Presets -->
         <div class="p-3 border-b border-maf-border shrink-0">
             <input id="search-input" type="text" placeholder="Search MMSI / Vessel Name…"
                 class="w-full bg-maf-bg border border-maf-border text-white text-[11px] font-mono px-3 py-1.5 rounded-none focus:outline-none focus:border-maf-accent transition-colors placeholder-maf-dim">
+            <div class="flex items-center gap-1.5 mt-2 flex-wrap">
+                <button onclick="setPreset('all')" class="text-[9px] font-mono px-2 py-0.5 bg-maf-bg border border-maf-border text-maf-text hover:border-maf-accent hover:text-maf-accent transition-colors">ALL</button>
+                <button onclick="setPreset('anom')" class="text-[9px] font-mono px-2 py-0.5 bg-maf-bg border border-maf-alert/40 text-maf-alert hover:bg-maf-alert/20 transition-colors">ANOMALIES</button>
+                <button onclick="setPreset('dark')" class="text-[9px] font-mono px-2 py-0.5 bg-maf-bg border border-maf-warn/40 text-maf-warn hover:bg-maf-warn/20 transition-colors">DARK</button>
+                <button onclick="setPreset('fast')" class="text-[9px] font-mono px-2 py-0.5 bg-maf-bg border border-maf-green/40 text-maf-green hover:bg-maf-green/20 transition-colors">>15KTS</button>
+            </div>
         </div>
 
         <!-- Filters -->
@@ -311,6 +320,10 @@
                 </div>
             </div>
             <div class="flex items-center gap-2 ml-4 shrink-0">
+                <button onclick="recenterOnSelectedVessel()"
+                    class="text-[9px] font-mono uppercase tracking-widest border border-maf-green/60 text-maf-green px-2.5 py-1.5 hover:bg-maf-green hover:text-maf-bg transition-colors whitespace-nowrap">
+                    🎯 Center Map
+                </button>
                 <button id="neo4j-query-btn" onclick="fetchVesselIntel()"
                     class="text-[9px] font-mono uppercase tracking-widest border border-maf-accent/60 text-maf-accent px-3 py-1.5 hover:bg-maf-accent hover:text-maf-bg transition-colors whitespace-nowrap">
                     ⬡ Query Neo4j
@@ -367,6 +380,8 @@
 const API = 'http://localhost:5000/api';
 let map, markersLayer, historyLayer;
 let allVessels = [], allAnomalies = [];
+let vesselMap = new Map();
+let currentSelectedVessel = null;
 let selectedMmsi = null;
 let markerRefs = {};   // mmsi → leaflet marker
 
@@ -394,11 +409,40 @@ function initMap() {
     historyLayer = L.layerGroup().addTo(map);
 }
 
+function toISTString(isoStr) {
+    if (!isoStr) return '--';
+    try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr;
+        return d.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: false
+        }).replace(',', '') + ' IST';
+    } catch(e) {
+        return isoStr;
+    }
+}
+
+function getCompassDirection(deg) {
+    if (deg == null || deg === '' || isNaN(deg)) return '---';
+    const d = (parseFloat(deg) % 360 + 360) % 360;
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const idx = Math.round(d / 45) % 8;
+    return `${Math.round(d)}° (${directions[idx]})`;
+}
+
 function initClock() {
     setInterval(() => {
         const now = new Date();
-        document.getElementById('clock').textContent =
-            now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+        const istStr = now.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: false
+        }).replace(',', '') + ' IST';
+        document.getElementById('clock').textContent = istStr;
     }, 1000);
 }
 
@@ -433,6 +477,27 @@ function resetFilters() {
     renderMap();
 }
 
+function setPreset(type) {
+    if (type === 'all') {
+        resetFilters();
+    } else if (type === 'anom') {
+        resetFilters();
+        document.getElementById('f-anom-only').checked = true;
+    } else if (type === 'dark') {
+        resetFilters();
+        document.getElementById('f-anom-only').checked = true;
+        document.getElementById('f-speed').checked = false;
+        document.getElementById('f-eez').checked = false;
+        document.getElementById('f-sanction').checked = false;
+        document.getElementById('f-other').checked = false;
+    } else if (type === 'fast') {
+        resetFilters();
+        document.getElementById('f-speed-min').value = 15;
+        document.getElementById('speed-val').textContent = '15 kts';
+    }
+    renderMap();
+}
+
 // ── DATA ───────────────────────────────────────────────────────────────────────
 async function safeGet(path) {
     try {
@@ -456,6 +521,11 @@ async function fetchAll() {
     if (apiOk && !vRes.error) {
         allVessels   = (vRes.vessels || []).filter(v => v.lat != null && v.lon != null);
         allAnomalies = (aRes && aRes.events) || [];
+        vesselMap.clear();
+        allVessels.forEach(v => {
+            if (v.mmsi) vesselMap.set(String(v.mmsi), v);
+            if (v.imo) vesselMap.set(String(v.imo), v);
+        });
         setStatus('connected', `LIVE · ${allVessels.length} vessels`);
         document.getElementById('vessel-count').textContent = allVessels.length + ' VESSELS TRACKED';
     } else {
@@ -628,7 +698,20 @@ function setStatus(state, text) {
 
 function injectMockData() {
     const flags = ['LR','PA','MH','US','IN','CN','IR','KP','RU'];
+    const seaLanes = [
+        { latMin: 5, latMax: 22, lonMin: 60, lonMax: 78 },    // Arabian Sea / West Coast India
+        { latMin: 8, latMax: 20, lonMin: 80, lonMax: 95 },    // Bay of Bengal / East Coast India
+        { latMin: 1, latMax: 6,   lonMin: 98, lonMax: 104 },  // Malacca Strait / Singapore
+        { latMin: 22, latMax: 28, lonMin: 48, lonMax: 56 },   // Persian Gulf / Strait of Hormuz
+        { latMin: 12, latMax: 27, lonMin: 34, lonMax: 43 },   // Red Sea / Bab-el-Mandeb
+        { latMin: 30, latMax: 38, lonMin: 15, lonMax: 35 },   // Mediterranean Sea
+        { latMin: -10, latMax: 10, lonMin: 65, lonMax: 85 }   // Central Indian Ocean Corridor
+    ];
+    
     for (let i = 0; i < 250; i++) {
+        const lane = seaLanes[i % seaLanes.length];
+        const lat = lane.latMin + Math.random() * (lane.latMax - lane.latMin);
+        const lon = lane.lonMin + Math.random() * (lane.lonMax - lane.lonMin);
         allVessels.push({
             mmsi: `4${String(i).padStart(8,'0')}`,
             imo: `9${Math.floor(Math.random()*900000+100000)}`,
@@ -637,8 +720,8 @@ function injectMockData() {
             speed_kts: +(Math.random() * 22).toFixed(1),
             heading: Math.floor(Math.random() * 360),
             draught_m: +(Math.random() * 15 + 2).toFixed(1),
-            lat: (Math.random() * 100) - 20,
-            lon: (Math.random() * 320) - 60,
+            lat: +lat.toFixed(4),
+            lon: +lon.toFixed(4),
             last_seen: new Date(Date.now() - Math.random()*3600000).toISOString(),
         });
     }
@@ -771,18 +854,19 @@ function vesselTypeLabel(code) {
 
 // ── DETAIL PANEL ───────────────────────────────────────────────────────────────
 function openDetails(v, anom) {
-    selectedMmsi = v.mmsi;
+    currentSelectedVessel = v;
+    selectedMmsi = (v.mmsi != null && v.mmsi !== '') ? v.mmsi : (v.imo != null && v.imo !== '' ? v.imo : v.name);
 
     document.getElementById('det-name').textContent  = v.name || 'UNKNOWN';
-    document.getElementById('det-mmsi').textContent  = v.mmsi;
+    document.getElementById('det-mmsi').textContent  = v.mmsi || v.imo || '---';
     document.getElementById('det-imo').textContent   = v.imo || '---';
     document.getElementById('det-flag').textContent  = v.flag || '??';
     document.getElementById('det-speed').textContent = parseFloat(v.speed_kts || v.speed || 0).toFixed(1);
-    document.getElementById('det-heading').textContent = v.heading || '---';
+    document.getElementById('det-heading').textContent = getCompassDirection(v.heading);
     document.getElementById('det-draft').textContent = v.draught_m || '---';
     document.getElementById('det-lat').textContent   = v.lat != null ? (+v.lat).toFixed(4) : '--';
     document.getElementById('det-lon').textContent   = v.lon != null ? (+v.lon).toFixed(4) : '--';
-    document.getElementById('det-time').textContent  = v.last_seen ? v.last_seen.replace('T',' ').slice(0,19) : '--';
+    document.getElementById('det-time').textContent  = toISTString(v.last_seen);
 
     // Vessel type badge
     const typeBadge = document.getElementById('det-vessel-type-badge');
@@ -947,54 +1031,84 @@ async function fetchVesselIntel() {
     }
 }
 
+function recenterOnSelectedVessel() {
+    const v = currentSelectedVessel || (selectedMmsi ? vesselMap.get(selectedMmsi) : null);
+    if (!v) {
+        showToast('Please select a vessel first');
+        return;
+    }
+    if (v.lat != null && v.lon != null) {
+        map.flyTo([v.lat, v.lon], 11, { duration: 1.2 });
+        showToast(`Centered on ${v.name || selectedMmsi}`);
+    } else {
+        showToast('Vessel coordinates not available for centering');
+    }
+}
+
 // ── VESSEL TRACK ───────────────────────────────────────────────────────────────
 async function loadVesselHistory() {
-    if (!selectedMmsi) return;
+    const v = currentSelectedVessel || (selectedMmsi ? vesselMap.get(selectedMmsi) : null) || {};
+    const targetId = selectedMmsi || v.mmsi || v.imo || v.name;
+    if (!targetId) {
+        showToast('Please click a vessel on the map first');
+        return;
+    }
+
     const days = document.getElementById('track-days').value;
     const btn  = document.getElementById('load-track-btn');
 
     btn.textContent = '⏳ Fetching…';
     btn.disabled = true;
-    showToast(`Querying Cassandra — ${days}d track for ${selectedMmsi}…`);
+    showToast(`Loading track history for ${v.name || targetId}…`);
     historyLayer.clearLayers();
 
     try {
-        const res  = await fetch(`${API}/vessel-tracks/${encodeURIComponent(selectedMmsi)}`);
+        const latQuery = (v.lat != null) ? `&lat=${v.lat}` : '';
+        const lonQuery = (v.lon != null) ? `&lon=${v.lon}` : '';
+        const res  = await fetch(`${API}/vessel-tracks/${encodeURIComponent(targetId)}?days=${days}${latQuery}${lonQuery}`);
         const data = await res.json();
 
         if (data.error) throw new Error(data.error);
 
-        const points = (data.tracks || []).filter(p => p.lat != null && p.lon != null);
+        let points = (data.tracks || []).filter(p => p.lat != null && p.lon != null);
 
         if (points.length === 0) {
-            showToast(`No history found for ${selectedMmsi} in last ${days}d`);
+            showToast(`No history found for ${v.name || targetId}`);
         } else {
-            // Draw historical track as dashed cyan line
+            // Sort points chronologically for smooth polyline flow
+            points.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
             const latlngs = points.map(p => [p.lat, p.lon]);
+            
+            // Draw glowing trajectory line
             L.polyline(latlngs, {
-                color: '#00e5ff', weight: 2,
-                opacity: 0.65, dashArray: '6 5'
+                color: '#00e5ff', weight: 3,
+                opacity: 0.85, dashArray: '6 6'
             }).addTo(historyLayer);
 
-            // Mark oldest position
-            const first = points[0];
-            L.circleMarker([first.lat, first.lon], {
-                radius: 5, color: '#00e5ff', fillColor: '#0b1118', fillOpacity: 1, weight: 2
-            }).bindTooltip('Track start', { className: 'leaflet-tooltip' })
+            // Mark track origin point
+            const start = points[0];
+            L.circleMarker([start.lat, start.lon], {
+                radius: 6, color: '#00e5ff', fillColor: '#060a0f', fillOpacity: 1, weight: 2
+            }).bindTooltip(`Track Origin: ${start.timestamp ? start.timestamp.substring(11, 16) : ''}`, { className: 'leaflet-tooltip' })
               .addTo(historyLayer);
 
-            // Waypoint dots at speed changes
+            // Draw intermediate waypoints
             points.forEach((p, i) => {
-                if (i > 0 && i < points.length - 1 && i % 20 === 0) {
+                if (i > 0 && i < points.length - 1) {
                     L.circleMarker([p.lat, p.lon], {
-                        radius: 2, color: '#00e5ff99', fillColor: '#00e5ff', fillOpacity: 0.6, weight: 1
-                    }).addTo(historyLayer);
+                        radius: 3, color: '#00ff8899', fillColor: '#00ff88', fillOpacity: 0.8, weight: 1
+                    }).bindTooltip(`${p.speed || 0} kts`, { className: 'leaflet-tooltip' })
+                      .addTo(historyLayer);
                 }
             });
 
-            // Fit map to track
-            map.fitBounds(L.polyline(latlngs).getBounds(), { padding: [60, 60] });
-            showToast(`Track loaded — ${points.length} positions over ${days}d (${data.source})`);
+            // Smoothly fit map to track bounds
+            const trackBounds = L.polyline(latlngs).getBounds();
+            if (trackBounds.isValid()) {
+                map.fitBounds(trackBounds, { padding: [80, 80], maxZoom: 12, animate: true });
+            }
+            showToast(`Track Loaded — ${points.length} waypoints (${data.source || 'fused'})`);
             document.getElementById('track-legend').classList.remove('hidden');
         }
     } catch (e) {

@@ -1,16 +1,33 @@
+# Maritime AI Framework — Python Dependencies
+# Configured for OFFLINE deployment with Ollama as the LLM backend.
+# All inference is local — no cloud API keys required.
+
+# Database drivers
 neo4j>=5.12.0
+cassandra-driver>=3.28.0
+
+# LangChain core + Ollama (via OpenAI-compatible local API)
 langchain>=0.1.0
 langchain-openai>=0.0.2.post1
-langchain-groq>=0.1.0
-cassandra-driver>=3.28.0
-pydantic>=2.0.0
-agent-zero-lite>=0.1.0
+langchain-core>=0.1.0
+
+# Optional: Groq cloud provider (requires internet + GROQ_API_KEY)
+# langchain-groq>=0.1.0
+
+# MCP (Model Context Protocol) server for Agent Zero integration
 mcp>=1.0.0
 fastmcp>=0.1.0
+
+# Web scraping & data collection
 requests>=2.31.0
 beautifulsoup4>=4.12.0
+
+# FastAPI + GraphQL server
 fastapi>=0.104.0
 uvicorn[standard]>=0.23.2
 strawberry-graphql>=0.209.0
+
+# Utilities
+pydantic>=2.0.0
 python-dotenv>=1.0.0
 shapely>=2.0.0
