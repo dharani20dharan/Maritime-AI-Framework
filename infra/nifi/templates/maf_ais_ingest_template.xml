@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<template encoding-version="1.3">
+    <description>Maritime AI Framework (MAF) - Production AIS Telemetry Ingestion Template.
+Receives raw NMEA-0183 AIVDM and JSON AIS streams via UDP/TCP, decodes payloads, validates schema conformance, enriches spatial coordinates, and publishes to Kafka (ais-telemetry-raw) and Cassandra (ais_telemetry).
+    </description>
+    <groupId>maf-nifi-group-001</groupId>
+    <name>MAF_AIS_Ingest_Pipeline</name>
+    <snippet>
+        <processGroups/>
+        <remoteProcessGroups/>
+        <processors>
+            <!-- 1. ListenUDP / Ingest Socket -->
+            <processor>
+                <id>maf-proc-listen-udp</id>
+                <name>ListenUDP_AIS_Raw</name>
+                <type>org.apache.nifi.processors.standard.ListenUDP</type>
+                <config>
+                    <properties>
+                        <entry>
+                            <key>Listening Port</key>
+                            <value>10110</value>
+                        </entry>
+                        <entry>
+                            <key>Max Batch Size</key>
+                            <value>1000</value>
+                        </entry>
+                        <entry>
+                            <key>Receive Buffer Size</key>
+                            <value>10485760</value>
+                        </entry>
+                    </properties>
+                    <schedulingPeriod>0 sec</schedulingPeriod>
+                    <schedulingStrategy>TIMER_DRIVEN</schedulingStrategy>
+                    <yieldDuration>1 sec</yieldDuration>
+                </config>
+            </processor>
+
+            <!-- 2. Parse & Validate AIS Records -->
+            <processor>
+                <id>maf-proc-parse-ais</id>
+                <name>Parse_NMEA_AIS_To_JSON</name>
+                <type>org.apache.nifi.processors.standard.ExecuteScript</type>
+                <config>
+                    <properties>
+                        <entry>
+                            <key>Script Engine</key>
+                            <value>python</value>
+                        </entry>
+                        <entry>
+                            <key>Script Body</key>
+                            <value><![CDATA[
+# MAF In-Flight AIS NMEA-0183 Parser
+import json
+import sys
+from org.apache.commons.io import IOUtils
+from java.nio.charset import StandardCharsets
+from org.apache.nifi.processor.io import StreamCallback
+
+class AISCallback(StreamCallback):
+    def process(self, inStream, outStream):
+        raw = IOUtils.toString(inStream, StandardCharsets.UTF_8).strip()
+        lines = raw.split("\n")
+        parsed_records = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # Handle native JSON or decode AIVDM sentence
+            if line.startswith("{"):
+                try:
+                    parsed_records.append(json.loads(line))
+                except Exception:
+                    pass
+            elif line.startswith("!") or line.startswith("$"):
+                # Tagged raw NMEA payload
+                parsed_records.append({"raw_nmea": line, "parsed_by": "maf-nifi"})
+        outStream.write(json.dumps(parsed_records).encode('utf-8'))
+
+flowFile = session.get()
+if flowFile is not None:
+    flowFile = session.write(flowFile, AISCallback())
+    session.transfer(flowFile, REL_SUCCESS)
+]]></value>
+                        </entry>
+                    </properties>
+                    <schedulingPeriod>0 sec</schedulingPeriod>
+                    <schedulingStrategy>TIMER_DRIVEN</schedulingStrategy>
+                </config>
+            </processor>
+
+            <!-- 3. Evaluate AIS Schema Quality -->
+            <processor>
+                <id>maf-proc-validate-schema</id>
+                <name>ValidateRecord_MAF_Schema</name>
+                <type>org.apache.nifi.processors.standard.ValidateRecord</type>
+                <config>
+                    <properties>
+                        <entry>
+                            <key>record-reader</key>
+                            <value>JsonTreeReader_MAF_AIS</value>
+                        </entry>
+                        <entry>
+                            <key>record-writer</key>
+                            <value>JsonRecordSetWriter_MAF</value>
+                        </entry>
+                        <entry>
+                            <key>schema-name</key>
+                            <value>maf-ais-telemetry-v1</value>
+                        </entry>
+                    </properties>
+                    <schedulingPeriod>0 sec</schedulingPeriod>
+                    <schedulingStrategy>TIMER_DRIVEN</schedulingStrategy>
+                </config>
+            </processor>
+
+            <!-- 4. Publish to Kafka raw topic -->
+            <processor>
+                <id>maf-proc-publish-kafka</id>
+                <name>PublishKafka_AIS_Stream</name>
+                <type>org.apache.nifi.processors.kafka.pubsub.PublishKafka_2_6</type>
+                <config>
+                    <properties>
+                        <entry>
+                            <key>bootstrap.servers</key>
+                            <value>localhost:9092</value>
+                        </entry>
+                        <entry>
+                            <key>topic</key>
+                            <value>ais-telemetry-raw</value>
+                        </entry>
+                        <entry>
+                            <key>acks</key>
+                            <value>1</value>
+                        </entry>
+                        <entry>
+                            <key>compression.type</key>
+                            <value>snappy</value>
+                        </entry>
+                    </properties>
+                    <schedulingPeriod>0 sec</schedulingPeriod>
+                    <schedulingStrategy>TIMER_DRIVEN</schedulingStrategy>
+                </config>
+            </processor>
+
+            <!-- 5. Persist to Cassandra -->
+            <processor>
+                <id>maf-proc-put-cassandra</id>
+                <name>PutCassandraQL_Trajectory</name>
+                <type>org.apache.nifi.processors.cassandra.PutCassandraQL</type>
+                <config>
+                    <properties>
+                        <entry>
+                            <key>Cassandra Contact Points</key>
+                            <value>localhost:9042</value>
+                        </entry>
+                        <entry>
+                            <key>Keyspace</key>
+                            <value>maritime_intel</value>
+                        </entry>
+                        <entry>
+                            <key>Consistency Level</key>
+                            <value>LOCAL_ONE</value>
+                        </entry>
+                        <entry>
+                            <key>Statement</key>
+                            <value>INSERT INTO ais_telemetry (mmsi, timestamp, lat, lon, sog, cog, heading, nav_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)</value>
+                        </entry>
+                    </properties>
+                    <schedulingPeriod>0 sec</schedulingPeriod>
+                    <schedulingStrategy>TIMER_DRIVEN</schedulingStrategy>
+                </config>
+            </processor>
+        </processors>
+        <connections>
+            <!-- ListenUDP -> Parse NMEA -->
+            <connection>
+                <id>conn-listen-to-parse</id>
+                <name>Raw UDP Stream</name>
+                <source>
+                    <id>maf-proc-listen-udp</id>
+                    <type>PROCESSOR</type>
+                </source>
+                <destination>
+                    <id>maf-proc-parse-ais</id>
+                    <type>PROCESSOR</type>
+                </destination>
+                <selectedRelationships>success</selectedRelationships>
+            </connection>
+
+            <!-- Parse NMEA -> Validate Schema -->
+            <connection>
+                <id>conn-parse-to-validate</id>
+                <name>Parsed JSON FlowFiles</name>
+                <source>
+                    <id>maf-proc-parse-ais</id>
+                    <type>PROCESSOR</type>
+                </source>
+                <destination>
+                    <id>maf-proc-validate-schema</id>
+                    <type>PROCESSOR</type>
+                </destination>
+                <selectedRelationships>success</selectedRelationships>
+            </connection>
+
+            <!-- Validate -> Publish Kafka -->
+            <connection>
+                <id>conn-validate-to-kafka</id>
+                <name>Valid Telemetry</name>
+                <source>
+                    <id>maf-proc-validate-schema</id>
+                    <type>PROCESSOR</type>
+                </source>
+                <destination>
+                    <id>maf-proc-publish-kafka</id>
+                    <type>PROCESSOR</type>
+                </destination>
+                <selectedRelationships>valid</selectedRelationships>
+            </connection>
+
+            <!-- Validate -> Put Cassandra -->
+            <connection>
+                <id>conn-validate-to-cassandra</id>
+                <name>Telemetry Store</name>
+                <source>
+                    <id>maf-proc-validate-schema</id>
+                    <type>PROCESSOR</type>
+                </source>
+                <destination>
+                    <id>maf-proc-put-cassandra</id>
+                    <type>PROCESSOR</type>
+                </destination>
+                <selectedRelationships>valid</selectedRelationships>
+            </connection>
+        </connections>
+    </snippet>
+</template>

@@ -284,11 +284,10 @@ class CurriculumAgent:
         """Generate all 50 benchmark scenarios."""
         scenarios = []
 
-        # Template-based scenarios (L1–L3, IDs 1–20)
         template_levels = {
             1: list(range(1, 5)),   # Simple: scenarios 1-4
             2: list(range(5, 9)),   # Moderate: 5-8
-            3: list(range(9, 13)),  # Complex: 9-12
+            3: list(range(9, 21)),  # Complex: 9-20
         }
         for level, ids in template_levels.items():
             for sid in ids:
