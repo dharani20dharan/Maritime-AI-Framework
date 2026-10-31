@@ -56,6 +56,23 @@
         }
         .leaflet-control-zoom a:hover { background: #1a2535 !important; }
 
+        /* Layers Control */
+        .leaflet-control-layers {
+            background: #0b1118 !important; color: #b8c8d8 !important;
+            border: 1px solid #1a2535 !important; border-radius: 4px;
+            font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .leaflet-control-layers-expanded {
+            padding: 8px 12px; background: #0b1118 !important;
+        }
+        .leaflet-control-layers label {
+            color: #b8c8d8 !important; cursor: pointer;
+        }
+        .leaflet-control-layers input[type="radio"] {
+            accent-color: #00e5ff;
+        }
+
         /* Markers */
         .m-normal {
             background: #00e5ff; border-radius: 50%;
@@ -377,7 +394,8 @@
 
 <script>
 // ── STATE ──────────────────────────────────────────────────────────────────────
-const API = 'http://localhost:5000/api';
+const BASE = (typeof window !== 'undefined' && window.location.origin.startsWith('http')) ? window.location.origin : 'http://localhost:5000';
+const API = `${BASE}/api`;
 let map, markersLayer, historyLayer;
 let allVessels = [], allAnomalies = [];
 let vesselMap = new Map();
@@ -400,10 +418,37 @@ function initMap() {
     map = L.map('map', { zoomControl: false }).setView([15, 60], 4);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // CartoDB Dark Matter
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
-    }).addTo(map);
+    // 1. Tactical Dark Canvas (Default) - Esri Canvas Dark Base + Reference Labels (No API Key Required)
+    const darkBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri, HERE, Garmin, OpenStreetMap',
+        maxZoom: 16
+    });
+    const darkLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '',
+        maxZoom: 16,
+        pane: 'overlayPane'
+    });
+    const tacticalDark = L.layerGroup([darkBase, darkLabels]).addTo(map);
+
+    // 2. Ocean Basemap (Marine Bathymetry & Depth Contours)
+    const oceanBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri, GEBCO, NOAA, National Geographic',
+        maxZoom: 13
+    });
+
+    // 3. Satellite Imagery
+    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+        maxZoom: 18
+    });
+
+    // Base Layer Control (Tactical Maritime Layers)
+    const baseMaps = {
+        "Tactical Dark": tacticalDark,
+        "Ocean Bathymetry": oceanBase,
+        "Satellite Imagery": satellite
+    };
+    L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
 
     markersLayer = L.layerGroup().addTo(map);
     historyLayer = L.layerGroup().addTo(map);
@@ -908,9 +953,17 @@ function openDetails(v, anom) {
     // Show track controls
     document.getElementById('track-controls').classList.remove('hidden');
 
+    // Phase 4: Auto-load XAI attribution for anomalous vessels
+    if (anom && v.mmsi) {
+        loadXAIAttribution(v.mmsi);
+    } else {
+        document.getElementById('xai-panel').classList.add('hidden');
+    }
+
     // Re-render to update selected marker glow
     renderMap();
 }
+
 
 function closeDetails() {
     document.getElementById('detail-panel').classList.add('hidden-panel');
@@ -1135,7 +1188,211 @@ function showToast(msg) {
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => c.removeChild(t), 300); }, 3500);
 }
 
+// ── PHASE 4: HEATMAP LAYER ────────────────────────────────────────────────────
+let heatmapLayer = null;
+let heatmapVisible = false;
+
+async function toggleHeatmap() {
+    const btn = document.getElementById('heatmap-toggle-btn');
+    if (heatmapVisible) {
+        if (heatmapLayer) { map.removeLayer(heatmapLayer); heatmapLayer = null; }
+        heatmapVisible = false;
+        btn.classList.remove('bg-maf-accent/20', 'text-maf-accent', 'border-maf-accent/50');
+        btn.classList.add('text-maf-dim', 'border-maf-border');
+        btn.textContent = '🌡 Heatmap: OFF';
+        showToast('Corridor heat-map hidden');
+        return;
+    }
+    btn.textContent = '⏳ Loading…';
+    try {
+        const resp = await fetch(`${BASE}/api/heatmap?limit=300`);
+        const data = await resp.json();
+        const points = (data.points || []).map(p => [p.lat, p.lon, p.weight]);
+        if (points.length === 0) { showToast('No heatmap data'); btn.textContent = '🌡 Heatmap: OFF'; return; }
+        // Use Leaflet circle markers as simple heatmap approximation (no extra plugin needed)
+        heatmapLayer = L.layerGroup();
+        points.forEach(([lat, lon, w]) => {
+            L.circleMarker([lat, lon], {
+                radius: 10 * w + 3,
+                fillColor: w > 0.75 ? '#ff3b3b' : w > 0.5 ? '#ffc107' : '#00e5ff',
+                fillOpacity: 0.18 * w + 0.05,
+                color: 'transparent',
+                weight: 0,
+            }).addTo(heatmapLayer);
+        });
+        heatmapLayer.addTo(map);
+        heatmapVisible = true;
+        btn.classList.add('bg-maf-accent/20', 'text-maf-accent', 'border-maf-accent/50');
+        btn.classList.remove('text-maf-dim', 'border-maf-border');
+        btn.textContent = `🌡 Heatmap: ON (${points.length})`;
+        showToast(`Heatmap loaded — ${points.length} density points`);
+    } catch (e) {
+        showToast(`Heatmap error: ${e.message}`);
+        btn.textContent = '🌡 Heatmap: OFF';
+    }
+}
+
+// ── PHASE 4: XAI ATTRIBUTION PANEL ───────────────────────────────────────────
+async function loadXAIAttribution(mmsi) {
+    const panel = document.getElementById('xai-panel');
+    const content = document.getElementById('xai-content');
+    panel.classList.remove('hidden');
+    content.innerHTML = '<div class="text-maf-dim text-[10px] py-2 text-center animate-pulse">Loading attribution…</div>';
+    try {
+        const resp = await fetch(`${BASE}/api/attribution/${mmsi}`);
+        const data = await resp.json();
+        if (data.error) { content.innerHTML = `<div class="text-red-400 text-[10px]">${data.error}</div>`; return; }
+        const features = (data.features || []).filter(f => f.is_triggered);
+        const maxPhi = features.length > 0 ? Math.max(...features.map(f => f.phi)) : 1;
+        content.innerHTML = `
+          <div class="text-[10px] text-maf-dim mb-2">
+            Risk: <span class="text-maf-warn font-bold">${(data.total_risk_score||0).toFixed(1)}/100</span>
+            &nbsp;|&nbsp; ${data.triggered_rule_count || 0} rules triggered
+          </div>
+          <div class="text-[10px] text-maf-dim mb-3 leading-relaxed border-l-2 border-maf-accent/30 pl-2">${data.explanation || ''}</div>
+          ${features.length === 0 ? '<div class="text-maf-dim text-[10px]">No rules triggered.</div>' :
+            features.map(f => {
+                const barPct = maxPhi > 0 ? Math.round((f.phi / maxPhi) * 100) : 0;
+                const barColor = f.phi > 30 ? '#ff3b3b' : f.phi > 15 ? '#ffc107' : '#00e5ff';
+                return `
+                <div class="mb-2">
+                  <div class="flex justify-between text-[9px] mb-0.5">
+                    <span class="text-maf-text">${f.label}</span>
+                    <span style="color:${barColor}" class="font-bold">+${f.phi.toFixed(1)}</span>
+                  </div>
+                  <div class="w-full h-1.5 bg-maf-border rounded-full overflow-hidden">
+                    <div style="width:${barPct}%;background:${barColor}" class="h-full rounded-full transition-all duration-500"></div>
+                  </div>
+                  <div class="text-[8px] text-maf-dim mt-0.5">${f.percentage.toFixed(1)}% · conf ${(f.confidence*100).toFixed(0)}%</div>
+                </div>`;
+            }).join('')}`;
+    } catch (e) {
+        content.innerHTML = `<div class="text-red-400 text-[10px]">Attribution error: ${e.message}</div>`;
+    }
+}
+
+function closeXAIPanel() {
+    document.getElementById('xai-panel').classList.add('hidden');
+}
+
+// ── PHASE 4: THRESHOLD CONTROLS DRAWER ────────────────────────────────────────
+let thresholdsDrawerOpen = false;
+const thresholdChanges = {};
+
+async function toggleThresholdsDrawer() {
+    const drawer = document.getElementById('threshold-drawer');
+    thresholdsDrawerOpen = !thresholdsDrawerOpen;
+    if (thresholdsDrawerOpen) {
+        drawer.classList.remove('translate-x-full');
+        drawer.classList.add('translate-x-0');
+        await loadThresholds();
+    } else {
+        drawer.classList.add('translate-x-full');
+        drawer.classList.remove('translate-x-0');
+    }
+}
+
+async function loadThresholds() {
+    const container = document.getElementById('threshold-sliders');
+    container.innerHTML = '<div class="text-maf-dim text-[10px] animate-pulse">Loading thresholds…</div>';
+    try {
+        const resp = await fetch(`${BASE}/api/config/thresholds`);
+        const data = await resp.json();
+        const thresholds = data.thresholds || {};
+        container.innerHTML = Object.entries(thresholds).map(([ruleId, info]) => {
+            const val = info.value;
+            const label = info.label || ruleId;
+            const maxVal = val * 5 > 1 ? val * 5 : 10;
+            return `
+            <div class="mb-4">
+              <div class="flex justify-between text-[9px] mb-1">
+                <span class="text-maf-text">${label}</span>
+                <span id="thresh-val-${ruleId}" class="text-maf-accent font-bold">${val}</span>
+              </div>
+              <input type="range" id="thresh-${ruleId}" min="0" max="${maxVal}" step="${maxVal > 10 ? 1 : 0.1}"
+                value="${val}"
+                class="w-full accent-cyan-400 h-1.5 bg-maf-border rounded-full appearance-none cursor-pointer"
+                oninput="updateThresholdPreview('${ruleId}', this.value)">
+              <div class="text-[8px] text-maf-dim mt-0.5">${ruleId}</div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = `<div class="text-red-400 text-[10px]">Error: ${e.message}</div>`;
+    }
+}
+
+function updateThresholdPreview(ruleId, val) {
+    document.getElementById(`thresh-val-${ruleId}`).textContent = parseFloat(val).toFixed(2);
+    thresholdChanges[ruleId] = parseFloat(val);
+}
+
+async function applyThresholds() {
+    if (Object.keys(thresholdChanges).length === 0) { showToast('No changes to apply'); return; }
+    try {
+        const resp = await fetch(`${BASE}/api/config/thresholds`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(thresholdChanges),
+        });
+        const data = await resp.json();
+        if (data.status === 'ok' || data.status === 'partial') {
+            showToast(`✓ ${Object.keys(thresholdChanges).length} threshold(s) updated`);
+            Object.keys(thresholdChanges).forEach(k => delete thresholdChanges[k]);
+        } else {
+            showToast(`Error: ${data.error || 'Unknown error'}`);
+        }
+    } catch (e) {
+        showToast(`Apply error: ${e.message}`);
+    }
+}
+
 window.onload = init;
 </script>
+
+<!-- ── PHASE 4: XAI ATTRIBUTION PANEL ──────────────────────────────────────── -->
+<div id="xai-panel" class="hidden fixed bottom-4 right-4 w-72 bg-maf-panel border border-maf-border rounded-sm shadow-2xl z-[9999] flex flex-col" style="max-height:420px">
+    <div class="flex items-center justify-between px-3 py-2 border-b border-maf-border shrink-0">
+        <span class="text-[10px] font-bold text-maf-accent tracking-widest">⚡ XAI / SHAP ATTRIBUTION</span>
+        <button onclick="closeXAIPanel()" class="text-maf-dim hover:text-red-400 text-sm leading-none">✕</button>
+    </div>
+    <div id="xai-content" class="overflow-y-auto p-3 text-[10px] flex-1"></div>
+</div>
+
+<!-- ── PHASE 4: THRESHOLD DRAWER ───────────────────────────────────────────── -->
+<div id="threshold-drawer" class="fixed top-12 right-0 w-72 h-[calc(100vh-3rem)] bg-maf-panel border-l border-maf-border z-[9998] flex flex-col translate-x-full transition-transform duration-300">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-maf-border shrink-0">
+        <span class="text-[10px] font-bold text-maf-accent tracking-widest">🎛 DETECTION THRESHOLDS</span>
+        <button onclick="toggleThresholdsDrawer()" class="text-maf-dim hover:text-red-400 text-sm">✕</button>
+    </div>
+    <div id="threshold-sliders" class="flex-1 overflow-y-auto p-4"></div>
+    <div class="px-4 py-3 border-t border-maf-border shrink-0">
+        <button onclick="applyThresholds()" id="apply-thresh-btn"
+            class="w-full py-1.5 bg-maf-accent/20 border border-maf-accent/50 text-maf-accent text-[10px] font-bold hover:bg-maf-accent/30 transition-colors rounded-sm tracking-widest">
+            APPLY CHANGES
+        </button>
+    </div>
+</div>
+
+<!-- ── PHASE 4: TOOLBAR BUTTONS (injected via script) ──────────────────────── -->
+<script>
+// Inject heatmap and threshold buttons into the existing toolbar after DOM load
+document.addEventListener('DOMContentLoaded', () => {
+    // Find the header right-side toolbar or create a floating action bar
+    const fab = document.createElement('div');
+    fab.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:9990;';
+    fab.innerHTML = `
+        <button id="heatmap-toggle-btn" onclick="toggleHeatmap()"
+            class="px-3 py-1.5 bg-maf-panel border border-maf-border text-maf-dim text-[10px] font-bold hover:border-maf-accent/50 hover:text-maf-accent transition-colors rounded-sm tracking-widest">
+            🌡 Heatmap: OFF
+        </button>
+        <button onclick="toggleThresholdsDrawer()"
+            class="px-3 py-1.5 bg-maf-panel border border-maf-border text-maf-dim text-[10px] font-bold hover:border-maf-accent/50 hover:text-maf-accent transition-colors rounded-sm tracking-widest">
+            🎛 Thresholds
+        </button>`;
+    document.body.appendChild(fab);
+});
+</script>
+
 </body>
 </html>
+

@@ -26,12 +26,19 @@ CORS(app)
 
 @app.route("/")
 @app.route("/dashboard")
+@app.route("/maritime_map_osint_dashboard.html")
 def index():
     if os.path.exists("maritime_map_osint_dashboard.html"):
         return send_file("maritime_map_osint_dashboard.html")
     elif os.path.exists("dashboard.html"):
         return send_file("dashboard.html")
     return "Dashboard HTML file not found", 404
+
+@app.route("/dashboard.html")
+def dashboard_legacy():
+    if os.path.exists("dashboard.html"):
+        return send_file("dashboard.html")
+    return "dashboard.html not found", 404
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")
@@ -665,6 +672,187 @@ def api_etl_reset_anomalies():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"error": str(e)}), 200
+
+
+# ── XAI ATTRIBUTION ───────────────────────────────────────────────────────────
+@app.route("/api/attribution/<identifier>")
+def api_attribution(identifier):
+    """
+    GET /api/attribution/<imo_or_mmsi>
+    Returns Shapley-style XAI feature attribution breakdown for a vessel.
+    """
+    try:
+        import sys, os
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from tools.xai_attribution import explain_vessel
+
+        # Try to fetch vessel data from Neo4j
+        triggered_rules = []
+        vessel_name = None
+        risk_score = None
+        rule_confidences = {}
+
+        try:
+            driver = get_neo4j_driver()
+            with driver.session() as s:
+                # Detect whether identifier is MMSI (9 digits) or IMO
+                if identifier.isdigit() and len(identifier) == 9:
+                    cypher = "MATCH (v:Vessel {mmsi: $id}) RETURN v LIMIT 1"
+                else:
+                    cypher = "MATCH (v:Vessel {imo: $id}) RETURN v LIMIT 1"
+                result = s.run(cypher, id=identifier)
+                record = result.single()
+                if record:
+                    v = record["v"]
+                    vessel_name = v.get("name")
+                    risk_score = v.get("risk_score")
+                    identifier = v.get("mmsi", identifier)
+
+                # Fetch triggered anomaly events for this vessel
+                ev_result = s.run(
+                    "MATCH (v:Vessel {mmsi: $mmsi})-[:HAS_EVENT]->(e:Event) "
+                    "RETURN e.rule_id AS rule_id, e.confidence AS conf LIMIT 50",
+                    mmsi=identifier
+                )
+                for row in ev_result:
+                    rule_id = row.get("rule_id")
+                    conf = row.get("conf", 0.85)
+                    if rule_id:
+                        triggered_rules.append(rule_id)
+                        rule_confidences[rule_id] = float(conf) if conf else 0.85
+            driver.close()
+        except Exception as neo_err:
+            log.warning(f"Neo4j lookup failed for {identifier}: {neo_err}")
+
+        # Fall back to a demo if no DB data
+        if not triggered_rules:
+            triggered_rules = ["M-AIS-GAP", "M-DARK-LOITER"]
+            risk_score = risk_score or 45.0
+
+        attribution = explain_vessel(
+            mmsi=identifier,
+            triggered_rules=triggered_rules,
+            rule_confidences=rule_confidences,
+            vessel_name=vessel_name,
+            existing_risk_score=risk_score,
+        )
+        return jsonify(attribution.to_dict())
+    except Exception as e:
+        log.exception("Attribution error")
+        return jsonify({"error": str(e)}), 500
+
+
+# ── THRESHOLDS ────────────────────────────────────────────────────────────────
+@app.route("/api/config/thresholds", methods=["GET"])
+def api_get_thresholds():
+    """GET /api/config/thresholds — Returns current sensitivity thresholds."""
+    try:
+        from tools.xai_attribution import load_thresholds, TECHNIQUE_REGISTRY
+        thresholds = load_thresholds()
+        # Enrich with labels
+        enriched = {}
+        for rule_id, val in thresholds.items():
+            label = TECHNIQUE_REGISTRY.get(rule_id, {}).get("label", rule_id)
+            enriched[rule_id] = {"value": val, "label": label}
+        return jsonify({"thresholds": enriched, "status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/config/thresholds", methods=["POST"])
+def api_set_thresholds():
+    """
+    POST /api/config/thresholds
+    Body: {"M-AIS-GAP": 4.0, "M-DARK-LOITER": 3.5, ...}
+    Dynamically updates and persists technique sensitivity thresholds.
+    """
+    try:
+        from flask import request
+        from tools.xai_attribution import update_thresholds
+        payload = request.get_json(force=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Body must be a JSON object"}), 400
+        updated, errors = update_thresholds(payload)
+        if errors:
+            return jsonify({"status": "partial", "errors": errors, "thresholds": updated})
+        return jsonify({"status": "ok", "thresholds": updated})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── HEATMAP ───────────────────────────────────────────────────────────────────
+@app.route("/api/heatmap")
+def api_heatmap():
+    """
+    GET /api/heatmap
+    Returns spatial point density coordinates for corridor heat-map overlay.
+    Query params: ?rule=M-DARK-LOITER&limit=500
+    """
+    try:
+        from flask import request
+        from tools.xai_attribution import XAIAttributionEngine
+        rule_filter = request.args.get("rule", None)
+        limit = min(int(request.args.get("limit", 500)), 2000)
+
+        events = []
+        try:
+            driver = get_neo4j_driver()
+            with driver.session() as s:
+                if rule_filter:
+                    cypher = (
+                        "MATCH (e:Event) "
+                        "WHERE (e.rule_id = $rule OR e.event_type = $rule) AND e.location IS NOT NULL "
+                        "RETURN e.location.latitude AS lat, e.location.longitude AS lon, "
+                        "       coalesce(e.confidence, 0.8) * 100 AS risk_score, "
+                        "       coalesce(e.rule_id, e.event_type) AS rule_id "
+                        f"LIMIT {limit}"
+                    )
+                    result = s.run(cypher, rule=rule_filter)
+                else:
+                    cypher = (
+                        "MATCH (e:Event) "
+                        "WHERE e.location IS NOT NULL "
+                        "RETURN e.location.latitude AS lat, e.location.longitude AS lon, "
+                        "       coalesce(e.confidence, 0.8) * 100 AS risk_score, "
+                        "       coalesce(e.rule_id, e.event_type) AS rule_id "
+                        f"LIMIT {limit}"
+                    )
+                    result = s.run(cypher)
+                for row in result:
+                    events.append({
+                        "lat": float(row["lat"]),
+                        "lon": float(row["lon"]),
+                        "risk_score": float(row["risk_score"] or 50),
+                        "rule_id": row["rule_id"],
+                    })
+            driver.close()
+        except Exception as neo_err:
+            log.warning(f"Heatmap Neo4j query failed: {neo_err}")
+            # Return demo heatmap data for Indian Ocean / Strait of Malacca
+            import random
+            random.seed(42)
+            demo_zones = [
+                (1.25, 103.82, 0.9),   # Strait of Malacca
+                (14.5, 54.3, 0.8),     # Arabian Sea
+                (12.8, 45.0, 0.75),    # Gulf of Aden
+                (0.5, 108.5, 0.65),    # South China Sea
+                (25.0, 56.5, 0.70),    # Strait of Hormuz
+            ]
+            for lat_c, lon_c, base_weight in demo_zones:
+                for _ in range(60):
+                    events.append({
+                        "lat": lat_c + random.uniform(-1.5, 1.5),
+                        "lon": lon_c + random.uniform(-1.5, 1.5),
+                        "risk_score": base_weight * 100,
+                        "rule_id": "M-DARK-LOITER",
+                    })
+
+        engine = XAIAttributionEngine()
+        heatmap_points = engine.compute_heatmap_points(events)
+        return jsonify({"points": heatmap_points, "count": len(heatmap_points)})
+    except Exception as e:
+        log.exception("Heatmap error")
+        return jsonify({"error": str(e)}), 500
 
 
 # ── HEALTH ────────────────────────────────────────────────────────────────────

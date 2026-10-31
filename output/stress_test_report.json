@@ -1,0 +1,13 @@
+{
+  "total_records": 5000,
+  "simulated_hours": 72.0,
+  "elapsed_real_seconds": 0.03,
+  "throughput_msgs_per_sec": 159878.7,
+  "anomalies_flagged": 58,
+  "latency_avg_ms": 0.004,
+  "latency_p50_ms": 0.002,
+  "latency_p95_ms": 0.005,
+  "latency_p99_ms": 0.089,
+  "peak_memory_mb": 23.3,
+  "memory_growth_mb": 1.95
+}

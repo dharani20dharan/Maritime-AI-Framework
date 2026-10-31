@@ -1,0 +1,990 @@
+{
+  "total_scenarios": 50,
+  "correct_predictions": 50,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1_score": 1.0,
+  "avg_latency_ms": 0.05165000000488362,
+  "results_by_level": {
+    "1": {
+      "accuracy": 1.0,
+      "avg_latency_ms": 0.06932500002676534,
+      "count": 4
+    },
+    "2": {
+      "accuracy": 1.0,
+      "avg_latency_ms": 0.04099999995332837,
+      "count": 4
+    },
+    "3": {
+      "accuracy": 1.0,
+      "avg_latency_ms": 0.05157500000526246,
+      "count": 12
+    },
+    "4": {
+      "accuracy": 1.0,
+      "avg_latency_ms": 0.05432000000382686,
+      "count": 10
+    },
+    "5": {
+      "accuracy": 1.0,
+      "avg_latency_ms": 0.04895500001111941,
+      "count": 20
+    }
+  },
+  "individual_results": [
+    {
+      "scenario_id": 1,
+      "scenario_name": "Simple AIS Gap",
+      "level": 1,
+      "expected_verdict": "PROBABLE_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.62,
+      "risk_score": 26.0,
+      "latency_ms": 0.1257999999779713,
+      "rules_detected": [
+        "M-AIS-GAP"
+      ]
+    },
+    {
+      "scenario_id": 2,
+      "scenario_name": "Loitering Near Chokepoint",
+      "level": 1,
+      "expected_verdict": "PROBABLE_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6333333333333333,
+      "risk_score": 28.0,
+      "latency_ms": 0.05490000012287055,
+      "rules_detected": [
+        "M-DARK-LOITER"
+      ]
+    },
+    {
+      "scenario_id": 3,
+      "scenario_name": "GPS Spoofing Detection",
+      "level": 1,
+      "expected_verdict": "PROBABLE_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6574468085106383,
+      "risk_score": 39.61702127659575,
+      "latency_ms": 0.046200000042517786,
+      "rules_detected": [
+        "M-GPS-SPOOF",
+        "M-IMPOSSIBLE-SPEED"
+      ]
+    },
+    {
+      "scenario_id": 4,
+      "scenario_name": "AIS Gap + Dark Loiter",
+      "level": 1,
+      "expected_verdict": "PROBABLE_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6272727272727272,
+      "risk_score": 35.090909090909086,
+      "latency_ms": 0.0503999999637017,
+      "rules_detected": [
+        "M-AIS-GAP",
+        "M-DARK-LOITER"
+      ]
+    },
+    {
+      "scenario_id": 5,
+      "scenario_name": "Sanction Link Discovery",
+      "level": 2,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.95,
+      "risk_score": 53.0,
+      "latency_ms": 0.04349999994701648,
+      "rules_detected": [
+        "M-SANCTION-LINK"
+      ]
+    },
+    {
+      "scenario_id": 6,
+      "scenario_name": "Beacon Pattern Anomaly",
+      "level": 2,
+      "expected_verdict": "PROBABLE_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6483870967741936,
+      "risk_score": 38.25806451612903,
+      "latency_ms": 0.038599999925281736,
+      "rules_detected": [
+        "M-BEACON-REPEAT",
+        "M-AIS-GAP"
+      ]
+    },
+    {
+      "scenario_id": 7,
+      "scenario_name": "Flag Hopping x3",
+      "level": 2,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6578947368421053,
+      "risk_score": 39.684210526315795,
+      "latency_ms": 0.043000000005122274,
+      "rules_detected": [
+        "M-FLAG-HOP",
+        "ID-001"
+      ]
+    },
+    {
+      "scenario_id": 8,
+      "scenario_name": "Simple STS Contact",
+      "level": 2,
+      "expected_verdict": "PROBABLE_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.636,
+      "risk_score": 28.4,
+      "latency_ms": 0.03889999993589299,
+      "rules_detected": [
+        "M-STS-DETECT"
+      ]
+    },
+    {
+      "scenario_id": 9,
+      "scenario_name": "Dark Period + Position Jump",
+      "level": 3,
+      "expected_verdict": "PROBABLE_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6255813953488372,
+      "risk_score": 34.837209302325576,
+      "latency_ms": 0.04020000005766633,
+      "rules_detected": [
+        "M-DARK-EVENT",
+        "M-GPS-SPOOF"
+      ]
+    },
+    {
+      "scenario_id": 10,
+      "scenario_name": "Name Inconsistency",
+      "level": 3,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6572192513368984,
+      "risk_score": 39.582887700534755,
+      "latency_ms": 0.04139999987273768,
+      "rules_detected": [
+        "M-NAME-CHANGE",
+        "ID-002"
+      ]
+    },
+    {
+      "scenario_id": 11,
+      "scenario_name": "STS + Dark Period",
+      "level": 3,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.618421052631579,
+      "risk_score": 41.76315789473684,
+      "latency_ms": 0.12749999996231054,
+      "rules_detected": [
+        "M-STS-DETECT",
+        "M-DARK-LOITER",
+        "M-AIS-GAP"
+      ]
+    },
+    {
+      "scenario_id": 12,
+      "scenario_name": "Flag Hop + Sanction",
+      "level": 3,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8904761904761904,
+      "risk_score": 61.857142857142854,
+      "latency_ms": 0.059299999975337414,
+      "rules_detected": [
+        "M-FLAG-HOP",
+        "M-SANCTION-LINK",
+        "ID-001"
+      ]
+    },
+    {
+      "scenario_id": 13,
+      "scenario_name": "MMSI Conflict",
+      "level": 3,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.95,
+      "risk_score": 61.0,
+      "latency_ms": 0.048800000058690784,
+      "rules_detected": [
+        "ID-003",
+        "M-MMSI-CONFLICT"
+      ]
+    },
+    {
+      "scenario_id": 14,
+      "scenario_name": "Port Call Anomaly",
+      "level": 3,
+      "expected_verdict": "PROBABLE_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6285714285714286,
+      "risk_score": 27.285714285714285,
+      "latency_ms": 0.036399999999048305,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY"
+      ]
+    },
+    {
+      "scenario_id": 15,
+      "scenario_name": "Dark Re-emergence + Identity Change",
+      "level": 3,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.889516129032258,
+      "risk_score": 61.74193548387097,
+      "latency_ms": 0.04600000011123484,
+      "rules_detected": [
+        "ID-004",
+        "M-DARK-REEMERGENCE",
+        "M-NAME-CHANGE"
+      ]
+    },
+    {
+      "scenario_id": 16,
+      "scenario_name": "GPS Spoof + STS",
+      "level": 3,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6205128205128205,
+      "risk_score": 42.07692307692308,
+      "latency_ms": 0.04510000007940107,
+      "rules_detected": [
+        "M-GPS-SPOOF",
+        "M-STS-DETECT",
+        "M-DARK-LOITER"
+      ]
+    },
+    {
+      "scenario_id": 17,
+      "scenario_name": "Full Evasion Chain L3",
+      "level": 3,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6318681318681318,
+      "risk_score": 51.78021978021978,
+      "latency_ms": 0.050999999984924216,
+      "rules_detected": [
+        "M-DARK-EVENT",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001"
+      ]
+    },
+    {
+      "scenario_id": 18,
+      "scenario_name": "Shell Company + Ownership Obscure",
+      "level": 3,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8891233766233766,
+      "risk_score": 61.6948051948052,
+      "latency_ms": 0.03710000009959913,
+      "rules_detected": [
+        "M-OWNERSHIP-OBSCURE",
+        "M-FLAG-HOP",
+        "M-SANCTION-LINK"
+      ]
+    },
+    {
+      "scenario_id": 19,
+      "scenario_name": "COLREGs + AIS Manipulation",
+      "level": 3,
+      "expected_verdict": "PROBABLE_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.6192982456140351,
+      "risk_score": 41.89473684210527,
+      "latency_ms": 0.045300000010684016,
+      "rules_detected": [
+        "COL-001",
+        "M-AIS-GAP",
+        "M-GPS-SPOOF"
+      ]
+    },
+    {
+      "scenario_id": 20,
+      "scenario_name": "Impossible Speed + Beacon",
+      "level": 3,
+      "expected_verdict": "PROBABLE_ANOMALY",
+      "actual_verdict": "PROBABLE_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.7,
+      "risk_score": 46.0,
+      "latency_ms": 0.04079999985151517,
+      "rules_detected": [
+        "M-IMPOSSIBLE-SPEED",
+        "M-BEACON-REPEAT"
+      ]
+    },
+    {
+      "scenario_id": 21,
+      "scenario_name": "Advanced Evasion Chain 1",
+      "level": 4,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.877455357142857,
+      "risk_score": 84.29464285714286,
+      "latency_ms": 0.0780000000304426,
+      "rules_detected": [
+        "M-SANCTION-LINK",
+        "M-DARK-LOITER",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001",
+        "M-PORT-CALL-ANOMALY"
+      ]
+    },
+    {
+      "scenario_id": 22,
+      "scenario_name": "Advanced Evasion Chain 2",
+      "level": 4,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8896417445482866,
+      "risk_score": 85.75700934579439,
+      "latency_ms": 0.05910000004405447,
+      "rules_detected": [
+        "M-SANCTION-LINK",
+        "M-DARK-LOITER",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001",
+        "ID-002"
+      ]
+    },
+    {
+      "scenario_id": 23,
+      "scenario_name": "Advanced Evasion Chain 3",
+      "level": 4,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.877455357142857,
+      "risk_score": 84.29464285714286,
+      "latency_ms": 0.06419999999707215,
+      "rules_detected": [
+        "M-SANCTION-LINK",
+        "M-DARK-LOITER",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001",
+        "M-PORT-CALL-ANOMALY"
+      ]
+    },
+    {
+      "scenario_id": 24,
+      "scenario_name": "Advanced Evasion Chain 4",
+      "level": 4,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8772388059701492,
+      "risk_score": 84.26865671641791,
+      "latency_ms": 0.06029999985912582,
+      "rules_detected": [
+        "M-SANCTION-LINK",
+        "M-DARK-LOITER",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001",
+        "M-GPS-SPOOF"
+      ]
+    },
+    {
+      "scenario_id": 25,
+      "scenario_name": "Advanced Evasion Chain 5",
+      "level": 4,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.877455357142857,
+      "risk_score": 84.29464285714286,
+      "latency_ms": 0.06469999993896636,
+      "rules_detected": [
+        "M-SANCTION-LINK",
+        "M-DARK-LOITER",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001",
+        "M-PORT-CALL-ANOMALY"
+      ]
+    },
+    {
+      "scenario_id": 26,
+      "scenario_name": "Advanced Evasion Chain 6",
+      "level": 4,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8896417445482866,
+      "risk_score": 85.75700934579439,
+      "latency_ms": 0.042300000131945126,
+      "rules_detected": [
+        "M-SANCTION-LINK",
+        "M-DARK-LOITER",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001",
+        "ID-002"
+      ]
+    },
+    {
+      "scenario_id": 27,
+      "scenario_name": "Advanced Evasion Chain 7",
+      "level": 4,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8761363636363636,
+      "risk_score": 84.13636363636364,
+      "latency_ms": 0.054700000191587606,
+      "rules_detected": [
+        "M-SANCTION-LINK",
+        "M-DARK-LOITER",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001",
+        "M-AIS-GAP"
+      ]
+    },
+    {
+      "scenario_id": 28,
+      "scenario_name": "Advanced Evasion Chain 8",
+      "level": 4,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8896417445482866,
+      "risk_score": 85.75700934579439,
+      "latency_ms": 0.04079999985151517,
+      "rules_detected": [
+        "M-SANCTION-LINK",
+        "M-DARK-LOITER",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001",
+        "ID-002"
+      ]
+    },
+    {
+      "scenario_id": 29,
+      "scenario_name": "Advanced Evasion Chain 9",
+      "level": 4,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8772388059701492,
+      "risk_score": 84.26865671641791,
+      "latency_ms": 0.040399999988949276,
+      "rules_detected": [
+        "M-SANCTION-LINK",
+        "M-DARK-LOITER",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001",
+        "M-GPS-SPOOF"
+      ]
+    },
+    {
+      "scenario_id": 30,
+      "scenario_name": "Advanced Evasion Chain 10",
+      "level": 4,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8896417445482866,
+      "risk_score": 85.75700934579439,
+      "latency_ms": 0.03870000000461005,
+      "rules_detected": [
+        "M-SANCTION-LINK",
+        "M-DARK-LOITER",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "ID-001",
+        "ID-002"
+      ]
+    },
+    {
+      "scenario_id": 31,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 1",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8974110032362459,
+      "risk_score": 98.68932038834951,
+      "latency_ms": 0.05409999994299142,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "COL-001",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT"
+      ]
+    },
+    {
+      "scenario_id": 32,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 2",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8974110032362459,
+      "risk_score": 98.68932038834951,
+      "latency_ms": 0.04539999986263865,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "COL-001",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT"
+      ]
+    },
+    {
+      "scenario_id": 33,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 3",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8986842105263158,
+      "risk_score": 98.84210526315789,
+      "latency_ms": 0.046099999963189475,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "M-IMPOSSIBLE-SPEED",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "COL-001",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001"
+      ]
+    },
+    {
+      "scenario_id": 34,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 4",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.89921875,
+      "risk_score": 98.90625,
+      "latency_ms": 0.050099999953090446,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "COL-001",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "ID-004"
+      ]
+    },
+    {
+      "scenario_id": 35,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 5",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8994818652849741,
+      "risk_score": 98.93782383419689,
+      "latency_ms": 0.04660000013245735,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "M-IMPOSSIBLE-SPEED",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT"
+      ]
+    },
+    {
+      "scenario_id": 36,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 6",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.89921875,
+      "risk_score": 98.90625,
+      "latency_ms": 0.04360000002634479,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "COL-001",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "ID-004"
+      ]
+    },
+    {
+      "scenario_id": 37,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 7",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8999999999999999,
+      "risk_score": 99.0,
+      "latency_ms": 0.049899999794433825,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT",
+        "ID-004"
+      ]
+    },
+    {
+      "scenario_id": 38,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 8",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8986842105263158,
+      "risk_score": 98.84210526315789,
+      "latency_ms": 0.04979999994247919,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "M-IMPOSSIBLE-SPEED",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "COL-001",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001"
+      ]
+    },
+    {
+      "scenario_id": 39,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 9",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8994818652849741,
+      "risk_score": 98.93782383419689,
+      "latency_ms": 0.058299999864175334,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "M-IMPOSSIBLE-SPEED",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT"
+      ]
+    },
+    {
+      "scenario_id": 40,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 10",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.9011523046092184,
+      "risk_score": 99.13827655310621,
+      "latency_ms": 0.049600000011196244,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "M-IMPOSSIBLE-SPEED",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "ID-004"
+      ]
+    },
+    {
+      "scenario_id": 41,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 11",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8994818652849741,
+      "risk_score": 98.93782383419689,
+      "latency_ms": 0.04740000008496281,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "M-IMPOSSIBLE-SPEED",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT"
+      ]
+    },
+    {
+      "scenario_id": 42,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 12",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8999999999999999,
+      "risk_score": 99.0,
+      "latency_ms": 0.04540000009001233,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT",
+        "ID-004"
+      ]
+    },
+    {
+      "scenario_id": 43,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 13",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.89921875,
+      "risk_score": 98.90625,
+      "latency_ms": 0.04590000003190653,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "COL-001",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "ID-004"
+      ]
+    },
+    {
+      "scenario_id": 44,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 14",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8994818652849741,
+      "risk_score": 98.93782383419689,
+      "latency_ms": 0.044800000068789814,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "M-IMPOSSIBLE-SPEED",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT"
+      ]
+    },
+    {
+      "scenario_id": 45,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 15",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8999999999999999,
+      "risk_score": 99.0,
+      "latency_ms": 0.06630000007135095,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT",
+        "ID-004"
+      ]
+    },
+    {
+      "scenario_id": 46,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 16",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8994818652849741,
+      "risk_score": 98.93782383419689,
+      "latency_ms": 0.051100000064252526,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "M-IMPOSSIBLE-SPEED",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT"
+      ]
+    },
+    {
+      "scenario_id": 47,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 17",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.9011523046092184,
+      "risk_score": 99.13827655310621,
+      "latency_ms": 0.05020000003241876,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "M-IMPOSSIBLE-SPEED",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "ID-004"
+      ]
+    },
+    {
+      "scenario_id": 48,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 18",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8999999999999999,
+      "risk_score": 99.0,
+      "latency_ms": 0.04450000005817856,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT",
+        "ID-004"
+      ]
+    },
+    {
+      "scenario_id": 49,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 19",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8974110032362459,
+      "risk_score": 98.68932038834951,
+      "latency_ms": 0.04550000016934064,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "COL-001",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT"
+      ]
+    },
+    {
+      "scenario_id": 50,
+      "scenario_name": "Expert Shell+Clone+STS Evasion 20",
+      "level": 5,
+      "expected_verdict": "CONFIRMED_ANOMALY",
+      "actual_verdict": "CONFIRMED_ANOMALY",
+      "is_correct": true,
+      "confidence": 0.8994818652849741,
+      "risk_score": 98.93782383419689,
+      "latency_ms": 0.04450000005817856,
+      "rules_detected": [
+        "M-PORT-CALL-ANOMALY",
+        "M-IMPOSSIBLE-SPEED",
+        "ID-003",
+        "M-DARK-LOITER",
+        "M-SANCTION-LINK",
+        "M-STS-DETECT",
+        "M-FLAG-HOP",
+        "M-OWNERSHIP-OBSCURE",
+        "ID-001",
+        "M-BEACON-REPEAT"
+      ]
+    }
+  ]
+}

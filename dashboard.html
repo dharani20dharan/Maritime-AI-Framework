@@ -646,6 +646,26 @@
     background: var(--bg3) !important;
     color: var(--accent) !important;
   }
+  .leaflet-control-layers {
+    background: var(--bg2) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 2px !important;
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important;
+  }
+  .leaflet-control-layers-expanded {
+    padding: 8px 12px !important;
+    background: var(--bg2) !important;
+  }
+  .leaflet-control-layers label {
+    color: var(--text) !important;
+    cursor: pointer;
+  }
+  .leaflet-control-layers input[type="radio"] {
+    accent-color: var(--accent);
+  }
   @keyframes pulse-border {
     0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.5); }
     70% { box-shadow: 0 0 0 8px rgba(255, 68, 68, 0); }
@@ -1092,11 +1112,37 @@ function initMap() {
     preferCanvas: true 
   }).setView([15.0, 75.0], 4);
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 20
-  }).addTo(map);
+  // 1. Tactical Dark Canvas (Default) - Esri Canvas Dark Base + Reference Labels (No API Key Required)
+  const darkBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri, HERE, Garmin, OpenStreetMap',
+    maxZoom: 16
+  });
+  const darkLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '',
+    maxZoom: 16,
+    pane: 'overlayPane'
+  });
+  const tacticalDark = L.layerGroup([darkBase, darkLabels]).addTo(map);
+
+  // 2. Ocean Basemap (Marine Bathymetry & Depth Contours)
+  const oceanBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri, GEBCO, NOAA, National Geographic',
+    maxZoom: 13
+  });
+
+  // 3. Satellite Imagery
+  const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+    maxZoom: 18
+  });
+
+  // Base Layer Control (Tactical Maritime Layers)
+  const baseMaps = {
+    "Tactical Dark": tacticalDark,
+    "Ocean Bathymetry": oceanBase,
+    "Satellite Imagery": satellite
+  };
+  L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
 
   vesselLayer.addTo(map);
   stsLayer.addTo(map);
