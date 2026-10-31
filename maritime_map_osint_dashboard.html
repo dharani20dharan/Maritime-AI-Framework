@@ -56,6 +56,23 @@
         }
         .leaflet-control-zoom a:hover { background: #1a2535 !important; }
 
+        /* Layers Control */
+        .leaflet-control-layers {
+            background: #0b1118 !important; color: #b8c8d8 !important;
+            border: 1px solid #1a2535 !important; border-radius: 4px;
+            font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .leaflet-control-layers-expanded {
+            padding: 8px 12px; background: #0b1118 !important;
+        }
+        .leaflet-control-layers label {
+            color: #b8c8d8 !important; cursor: pointer;
+        }
+        .leaflet-control-layers input[type="radio"] {
+            accent-color: #00e5ff;
+        }
+
         /* Markers */
         .m-normal {
             background: #00e5ff; border-radius: 50%;
@@ -377,7 +394,8 @@
 
 <script>
 // ── STATE ──────────────────────────────────────────────────────────────────────
-const API = 'http://localhost:5000/api';
+const BASE = (typeof window !== 'undefined' && window.location.origin.startsWith('http')) ? window.location.origin : 'http://localhost:5000';
+const API = `${BASE}/api`;
 let map, markersLayer, historyLayer;
 let allVessels = [], allAnomalies = [];
 let vesselMap = new Map();
@@ -400,10 +418,37 @@ function initMap() {
     map = L.map('map', { zoomControl: false }).setView([15, 60], 4);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // CartoDB Dark Matter
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
-    }).addTo(map);
+    // 1. Tactical Dark Canvas (Default) - Esri Canvas Dark Base + Reference Labels (No API Key Required)
+    const darkBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri, HERE, Garmin, OpenStreetMap',
+        maxZoom: 16
+    });
+    const darkLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '',
+        maxZoom: 16,
+        pane: 'overlayPane'
+    });
+    const tacticalDark = L.layerGroup([darkBase, darkLabels]).addTo(map);
+
+    // 2. Ocean Basemap (Marine Bathymetry & Depth Contours)
+    const oceanBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri, GEBCO, NOAA, National Geographic',
+        maxZoom: 13
+    });
+
+    // 3. Satellite Imagery
+    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+        maxZoom: 18
+    });
+
+    // Base Layer Control (Tactical Maritime Layers)
+    const baseMaps = {
+        "Tactical Dark": tacticalDark,
+        "Ocean Bathymetry": oceanBase,
+        "Satellite Imagery": satellite
+    };
+    L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
 
     markersLayer = L.layerGroup().addTo(map);
     historyLayer = L.layerGroup().addTo(map);

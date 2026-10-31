@@ -26,12 +26,19 @@ CORS(app)
 
 @app.route("/")
 @app.route("/dashboard")
+@app.route("/maritime_map_osint_dashboard.html")
 def index():
     if os.path.exists("maritime_map_osint_dashboard.html"):
         return send_file("maritime_map_osint_dashboard.html")
     elif os.path.exists("dashboard.html"):
         return send_file("dashboard.html")
     return "Dashboard HTML file not found", 404
+
+@app.route("/dashboard.html")
+def dashboard_legacy():
+    if os.path.exists("dashboard.html"):
+        return send_file("dashboard.html")
+    return "dashboard.html not found", 404
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")
@@ -793,17 +800,21 @@ def api_heatmap():
             with driver.session() as s:
                 if rule_filter:
                     cypher = (
-                        "MATCH (v:Vessel)-[:HAS_EVENT]->(e:Event) "
-                        "WHERE e.rule_id = $rule AND e.lat IS NOT NULL AND e.lon IS NOT NULL "
-                        "RETURN e.lat AS lat, e.lon AS lon, v.risk_score AS risk_score, e.rule_id AS rule_id "
+                        "MATCH (e:Event) "
+                        "WHERE (e.rule_id = $rule OR e.event_type = $rule) AND e.location IS NOT NULL "
+                        "RETURN e.location.latitude AS lat, e.location.longitude AS lon, "
+                        "       coalesce(e.confidence, 0.8) * 100 AS risk_score, "
+                        "       coalesce(e.rule_id, e.event_type) AS rule_id "
                         f"LIMIT {limit}"
                     )
                     result = s.run(cypher, rule=rule_filter)
                 else:
                     cypher = (
-                        "MATCH (v:Vessel)-[:HAS_EVENT]->(e:Event) "
-                        "WHERE e.lat IS NOT NULL AND e.lon IS NOT NULL "
-                        "RETURN e.lat AS lat, e.lon AS lon, v.risk_score AS risk_score, e.rule_id AS rule_id "
+                        "MATCH (e:Event) "
+                        "WHERE e.location IS NOT NULL "
+                        "RETURN e.location.latitude AS lat, e.location.longitude AS lon, "
+                        "       coalesce(e.confidence, 0.8) * 100 AS risk_score, "
+                        "       coalesce(e.rule_id, e.event_type) AS rule_id "
                         f"LIMIT {limit}"
                     )
                     result = s.run(cypher)
